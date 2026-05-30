@@ -22,9 +22,10 @@ def test_ack_clears_waiting():
     s.upsert(Session(id="a", tool="claude", project="P", last_activity=100.0))
     s.mark_waiting("a", event="Notification", ts=150.0)
     assert s.get("a").waiting is True
-    s.ack("a")
+    s.ack("a", ts=20.0)
     assert s.get("a").waiting is False
     assert s.get("a").waiting_event is None
+    assert s.get("a").acked_at == 20.0
 
 def test_remove_and_snapshot():
     s = Store()
