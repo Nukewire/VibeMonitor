@@ -6,6 +6,8 @@ claude-monitor-esp32/
 
 # --- Secrets / local config ---
 bridge/config.toml
+# Machine-specific auto-start launcher (hardcoded user + python path); recreated per machine.
+bridge/run_bridge.vbs
 
 # --- Python ---
 __pycache__/
