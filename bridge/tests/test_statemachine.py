@@ -26,9 +26,32 @@ def test_waiting_overrides_even_when_idle():
     s = mk(last_activity=1000.0, waiting=True, waiting_event="Notification", waiting_since=1001.0)
     assert derive_status(s, now=1100.0, cfg=CFG) == "waiting"
 
-def test_waiting_session_never_goes_gone():
-    s = mk(last_activity=1000.0, waiting=True, waiting_event="Stop", waiting_since=1001.0)
-    assert derive_status(s, now=1000.0 + 99999, cfg=CFG) == "waiting"
+def test_waiting_decays_to_idle_after_ttl():
+    cfg = Config(token="t", working_sec=10, waiting_ttl_sec=1800, gone_ttl_sec=100000)
+    s = mk(last_activity=1000.0, waiting=True, waiting_event="task_complete",
+           waiting_since=1000.0)
+    assert derive_status(s, now=1000.0 + 2000, cfg=cfg) == "idle"
+
+
+def test_waiting_still_waiting_within_ttl():
+    cfg = Config(token="t", working_sec=10, waiting_ttl_sec=1800, gone_ttl_sec=100000)
+    s = mk(last_activity=1000.0, waiting=True, waiting_event="Notification",
+           waiting_since=1000.0)
+    assert derive_status(s, now=1000.0 + 500, cfg=cfg) == "waiting"
+
+
+def test_stale_waiting_eventually_goes_gone():
+    cfg = Config(token="t", working_sec=10, waiting_ttl_sec=1800, gone_ttl_sec=3600)
+    s = mk(last_activity=1000.0, waiting=True, waiting_event="task_complete",
+           waiting_since=1000.0)
+    assert derive_status(s, now=1000.0 + 10000, cfg=cfg) == GONE
+
+
+def test_negative_elapsed_clamped_to_working():
+    cfg = Config(token="t", working_sec=10, waiting_ttl_sec=1800, gone_ttl_sec=3600)
+    s = mk(last_activity=5000.0)            # last_activity in the future vs now
+    assert derive_status(s, now=1000.0, cfg=cfg) == "working"
+
 
 def test_boundary_working_inclusive():
     # exactly working_sec old counts as working
