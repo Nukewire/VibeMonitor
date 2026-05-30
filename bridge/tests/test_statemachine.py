@@ -48,6 +48,8 @@ def test_stale_waiting_eventually_goes_gone():
 
 
 def test_negative_elapsed_clamped_to_working():
+    # A future-dated last_activity (clock skew) means "very recently active" -> working.
+    # The max(0.0, ...) clamp keeps elapsed non-negative so downstream age math is sane.
     cfg = Config(token="t", working_sec=10, waiting_ttl_sec=1800, gone_ttl_sec=3600)
     s = mk(last_activity=5000.0)            # last_activity in the future vs now
     assert derive_status(s, now=1000.0, cfg=cfg) == "working"

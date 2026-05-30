@@ -18,6 +18,7 @@ def derive_status(session: Session, now: float, cfg: Config) -> str:
 
     Returns one of: "waiting", "gone", "working", "idle"
     """
+    # waiting_since=None means the flag was set without a timestamp; treat as not-waiting
     if session.waiting and session.waiting_since is not None:
         if (now - session.waiting_since) <= cfg.waiting_ttl_sec:
             return "waiting"
