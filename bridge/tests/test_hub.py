@@ -3,7 +3,7 @@ from vibemonitor.config import Config
 from vibemonitor.model import Store, Session
 from vibemonitor.hub import create_app
 
-CFG = Config(token="secret", working_sec=10, idle_sec=120, gone_ttl_sec=1800)
+CFG = Config(token="secret", working_sec=10, waiting_ttl_sec=1800, gone_ttl_sec=1800)
 H = {"X-VibeMonitor-Token": "secret"}
 
 

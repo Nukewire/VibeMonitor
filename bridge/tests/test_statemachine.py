@@ -2,7 +2,7 @@ from vibemonitor.config import Config
 from vibemonitor.model import Session
 from vibemonitor.statemachine import derive_status, GONE
 
-CFG = Config(token="t", working_sec=10, idle_sec=120, gone_ttl_sec=1800)
+CFG = Config(token="t", working_sec=10, waiting_ttl_sec=1800, gone_ttl_sec=1800)
 
 def mk(**kw):
     base = dict(id="a", tool="claude", project="P", last_activity=1000.0)
