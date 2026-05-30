@@ -1,0 +1,35 @@
+# --- Reference example repos (not part of VibeMonitor) ---
+Claude-Monitor/
+CodexBar/
+ESP32-Cheap-Yellow-Display/
+claude-monitor-esp32/
+
+# --- Secrets / local config ---
+bridge/config.toml
+
+# --- Python ---
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.venv/
+venv/
+
+# --- PlatformIO / firmware build output ---
+.pio/
+
+# --- Sysinternals / vendored tools ---
+**/handle64.exe
+
+# --- Logs & serial captures ---
+*.log
+serial_log.txt
+
+# --- Agent / scratch ---
+.remember/
+.claude/
+_vm_probe.txt
+
+# --- OS cruft ---
+.DS_Store
+Thumbs.db

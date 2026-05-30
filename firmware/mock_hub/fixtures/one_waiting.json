@@ -1,0 +1,8 @@
+{"ts": 1780118000,
+ "usage": {"claude": {"ok": true, "pct": 0.24, "window": "5h", "resetSec": 8040, "weekPct": 0.06},
+           "codex": {"ok": false, "pct": null, "window": "session", "resetSec": null, "weekPct": null}},
+ "sessions": [
+   {"id":"s-wait","tool":"claude","project":"ApiServer","status":"waiting","ageSec":3,"waiting":true},
+   {"id":"s-work","tool":"claude","project":"WebApp","status":"working","ageSec":2,"waiting":false},
+   {"id":"s-idle","tool":"codex","project":"DocsSite","status":"idle","ageSec":140,"waiting":false}
+ ]}

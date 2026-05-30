@@ -1,0 +1,11 @@
+{"ts": 1780118000,
+ "usage": {"claude": {"ok": true, "pct": 0.61, "window": "5h", "resetSec": 2820, "weekPct": 0.33},
+           "codex": {"ok": false, "pct": null, "window": "session", "resetSec": null, "weekPct": null}},
+ "sessions": [
+   {"id":"1","tool":"claude","project":"WebApp","status":"working","ageSec":1,"waiting":false},
+   {"id":"2","tool":"claude","project":"ApiServer","status":"working","ageSec":4,"waiting":false},
+   {"id":"3","tool":"codex","project":"DataSync","status":"working","ageSec":2,"waiting":false},
+   {"id":"4","tool":"claude","project":"AuthService","status":"working","ageSec":5,"waiting":false},
+   {"id":"5","tool":"codex","project":"MobileApp","status":"idle","ageSec":80,"waiting":false},
+   {"id":"6","tool":"claude","project":"DocsSite","status":"idle","ageSec":150,"waiting":false}
+ ]}

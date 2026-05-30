@@ -1,0 +1,30 @@
+# VibeMonitor bridge configuration — EXAMPLE.
+# Copy this file to config.toml and edit. Keep config.toml out of version control
+# (it holds your shared secret); it is already listed in .gitignore.
+
+# Shared secret the device sends as the X-VibeMonitor-Token header on every request.
+# Use a long random string. NEVER commit your real token.
+token = "change-me-to-a-random-secret"
+
+# Host/port the hub binds to. 0.0.0.0 exposes it on the LAN so the device can reach it.
+host = "0.0.0.0"
+port = 5151
+
+[thresholds]
+working_sec  = 10      # file active within N s  => WORKING
+idle_sec     = 120     # quiet up to N s         => IDLE (still listed)
+gone_ttl_sec = 14400   # quiet past N s          => dropped from the list (4h)
+
+[poll]
+sessions_sec = 2.0     # how often to rescan local session files
+usage_sec    = 60.0    # how often to refresh usage / rate-limit data
+
+[providers]
+claude = true
+codex  = true
+
+[claude]
+# The Claude OAuth token used only locally for the usage probe. By default the
+# bridge auto-reads it from ~/.claude/.credentials.json, so you usually leave this
+# unset. Set it only to override the auto-detected value.
+# oauth_token = "..."

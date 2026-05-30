@@ -1,0 +1,7 @@
+{"ts": 1780118000,
+ "usage": {"claude": {"ok": true, "pct": 0.05, "window": "5h", "resetSec": 600, "weekPct": 0.02},
+           "codex": {"ok": false, "pct": null, "window": "session", "resetSec": null, "weekPct": null}},
+ "sessions": [
+   {"id":"a","tool":"claude","project":"VibeMonitor","status":"idle","ageSec":300,"waiting":false},
+   {"id":"b","tool":"codex","project":"AuthService","status":"idle","ageSec":900,"waiting":false}
+ ]}

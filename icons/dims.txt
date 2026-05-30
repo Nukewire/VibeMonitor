@@ -1,0 +1,8 @@
+claudecode (1).png           (640, 640) P
+claudecode (2).png           (640, 640) P
+claudecode-color (1).png     (640, 640) P
+claudecode-color.png         (640, 640) P
+codex (1).png                (640, 640) P
+codex-color (1).png          (640, 640) P
+codex-color.png              (640, 640) P
+codex.png                    (640, 640) P

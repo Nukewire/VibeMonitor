@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+config.toml
+run_setup.sh
+run_test.py
+run_pytest.sh
+setup_output.txt
+test_result.txt
+pytest_direct.txt
+pytest_output.txt
+run_*.sh
+run_*.py
+*_output.txt
+test_result.txt
+pytest_*.txt
