@@ -11,9 +11,9 @@ host = "0.0.0.0"
 port = 5151
 
 [thresholds]
-working_sec  = 10      # file active within N s  => WORKING
-idle_sec     = 120     # quiet up to N s         => IDLE (still listed)
-gone_ttl_sec = 14400   # quiet past N s          => dropped from the list (4h)
+working_sec     = 60      # a session shows "working" if its log changed within this many seconds
+waiting_ttl_sec = 1800    # a "waiting" (needs-you) session stays highlighted this long, then decays to idle
+gone_ttl_sec    = 14400   # quiet past N s => dropped from the list (4h)
 
 [poll]
 sessions_sec = 2.0     # how often to rescan local session files
