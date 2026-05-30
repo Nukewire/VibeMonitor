@@ -144,10 +144,17 @@ Received from the Claude Code hook; `event` is one of `Notification`, `Stop`, `U
 
 ## How status is determined
 
-- **waiting** — event-driven. For Claude, a hook `Notification` (input/permission needed) or `Stop` (turn finished) marks a session waiting; a `UserPromptSubmit` or `SessionStart` clears it. For Codex, a trailing `task_complete` marker (after the last `task_started`) means the turn is done and it's awaiting you. Waiting sessions are pinned to the top and never time out while waiting.
-- **working** — a session file was touched within `working_sec` (default 10s).
-- **idle** — quiet beyond `working_sec` but still newer than `gone_ttl_sec`.
-- **gone (hidden)** — quiet beyond `gone_ttl_sec` (default 4h); dropped from the list.
+- **working** — the session's log file changed within `working_sec` (default 60s).
+- **waiting** — the session is handing back to you. For **Claude**, this means a real
+  permission/input prompt (the `Notification` hook); a finished turn (`Stop`) is treated as
+  activity, not a waiting alert. For **Codex** (which has no "blocked on you" signal in its
+  logs), a finished turn (`task_complete`) is shown as waiting. A waiting session is
+  highlighted for `waiting_ttl_sec` (default 30 min), then quietly decays to idle — it is
+  never pinned forever.
+- **idle** — quiet, but not long enough to hide.
+- **gone (hidden)** — quiet longer than `gone_ttl_sec` (default 4h); dropped from the list.
+
+Tapping a waiting row on the device clears the alert for every window of that project.
 
 Thresholds live in `config.toml` under `[thresholds]`.
 

@@ -34,3 +34,19 @@ def test_scan_missing_root_is_safe(tmp_path):
     store = Store()
     scan_claude(store, projects_root=tmp_path / "nope", now=1.0)  # must not raise
     assert store.snapshot() == []
+
+def test_scan_claude_clamps_future_mtime(tmp_path):
+    import os
+    from vibemonitor.model import Store
+    from vibemonitor.collector_claude import scan_claude
+    root = tmp_path / "projects"
+    proj = root / "-c-Projects-MyApp"
+    proj.mkdir(parents=True)
+    f = proj / "abc123.jsonl"
+    f.write_text("{}\n", encoding="utf-8")
+    os.utime(f, (5000.0, 5000.0))          # mtime in the future relative to now
+    store = Store()
+    scan_claude(store, projects_root=root, now=1000.0)
+    s = store.get("abc123")
+    assert s is not None
+    assert s.last_activity <= 1000.0       # clamped, not 5000

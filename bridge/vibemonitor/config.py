@@ -9,9 +9,9 @@ class Config:
     token: str
     port: int = 8787
     host: str = "0.0.0.0"
-    working_sec: int = 10
-    idle_sec: int = 120
-    gone_ttl_sec: int = 1800
+    working_sec: int = 60
+    waiting_ttl_sec: int = 1800
+    gone_ttl_sec: int = 14400
     poll_sessions_sec: float = 2.0
     poll_usage_sec: float = 60.0
     claude_oauth_token: str | None = None
@@ -32,9 +32,9 @@ def load_config(path: str | Path) -> Config:
         token=token,
         port=int(data.get("port", 8787)),
         host=data.get("host", "0.0.0.0"),
-        working_sec=int(th.get("working_sec", 10)),
-        idle_sec=int(th.get("idle_sec", 120)),
-        gone_ttl_sec=int(th.get("gone_ttl_sec", 1800)),
+        working_sec=int(th.get("working_sec", 60)),
+        waiting_ttl_sec=int(th.get("waiting_ttl_sec", 1800)),
+        gone_ttl_sec=int(th.get("gone_ttl_sec", 14400)),
         poll_sessions_sec=float(poll.get("sessions_sec", 2.0)),
         poll_usage_sec=float(poll.get("usage_sec", 60.0)),
         claude_oauth_token=claude.get("oauth_token"),

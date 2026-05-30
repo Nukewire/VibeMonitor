@@ -12,6 +12,7 @@ class Session:
     waiting: bool = False
     waiting_event: str | None = None  # "Notification" | "Stop" | "task_complete"
     waiting_since: float | None = None
+    acked_at: float | None = None
 
 
 class Store:
@@ -53,8 +54,31 @@ class Store:
             if cur and cur.waiting:
                 self._sessions[sid] = replace(cur, waiting=False, waiting_event=None, waiting_since=None)
 
-    def ack(self, sid: str) -> None:
-        self.clear_waiting(sid)
+    def ack(self, sid: str, ts: float) -> None:
+        with self._lock:
+            cur = self._sessions.get(sid)
+            if cur:
+                self._sessions[sid] = replace(cur, waiting=False, waiting_event=None,
+                                              waiting_since=None, acked_at=ts)
+
+    def ack_group(self, tool: str, project: str, ts: float) -> None:
+        with self._lock:
+            for sid, cur in list(self._sessions.items()):
+                if cur.tool == tool and cur.project == project:
+                    self._sessions[sid] = replace(cur, waiting=False, waiting_event=None,
+                                                  waiting_since=None, acked_at=ts)
+
+    def remove_if_gone(self, sid: str, now: float, cfg, derive) -> bool:
+        """Atomically remove the session iff its derived status is gone. Returns
+        True if removed. Run from the single poll thread to avoid TOCTOU races."""
+        with self._lock:
+            cur = self._sessions.get(sid)
+            if cur is None:
+                return False
+            if derive(cur, now=now, cfg=cfg) == "gone":
+                del self._sessions[sid]
+                return True
+            return False
 
     def remove(self, sid: str) -> None:
         with self._lock:

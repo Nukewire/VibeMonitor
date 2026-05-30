@@ -9,31 +9,33 @@ GONE = "gone"
 def derive_status(session: Session, now: float, cfg: Config) -> str:
     """Return the display status for a session.
 
-    Priority order:
-      1. waiting – session is waiting for user input (never goes gone while waiting)
-      2. gone    – session has been inactive longer than cfg.gone_ttl_sec
-      3. working – session was active within cfg.working_sec seconds
-      4. idle    – session was active within cfg.idle_sec seconds (but not working)
+    Priority:
+      1. waiting – blocked on the user AND the waiting flag is still fresh (set
+         within cfg.waiting_ttl_sec). After that it decays naturally.
+      2. gone    – inactive longer than cfg.gone_ttl_sec (hidden by the hub).
+      3. working – active within cfg.working_sec seconds.
+      4. idle    – everything else (still listed).
 
     Returns one of: "waiting", "gone", "working", "idle"
     """
-    # Waiting sessions are pinned – they never flip to gone
-    if session.waiting:
-        return "waiting"
+    # waiting_since=None means the flag was set without a timestamp; treat as not-waiting
+    if session.waiting and session.waiting_since is not None:
+        if (now - session.waiting_since) <= cfg.waiting_ttl_sec:
+            return "waiting"
 
-    elapsed = now - session.last_activity
+    elapsed = max(0.0, now - session.last_activity)   # clamp clock skew
 
     if elapsed > cfg.gone_ttl_sec:
         return GONE
-
     if elapsed <= cfg.working_sec:
         return "working"
-
     return "idle"
 
 
-WAITING_EVENTS = {"Notification", "Stop"}
-ACTIVITY_EVENTS = {"UserPromptSubmit", "SessionStart"}
+# Only a true block-on-user prompt counts as waiting for Claude.
+WAITING_EVENTS = {"Notification"}
+# Turn boundaries / prompts are activity: they clear waiting and refresh recency.
+ACTIVITY_EVENTS = {"Stop", "UserPromptSubmit", "SessionStart"}
 
 
 def apply_hook_event(store: Store, ev: dict) -> None:

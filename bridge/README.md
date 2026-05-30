@@ -6,7 +6,8 @@ Serves local Claude Code + Codex session state and usage to the VibeMonitor CYD 
 A single Python process that:
 - watches `~/.claude/projects/**/*.jsonl` and today's `~/.codex/sessions/...` to build a
   live list of your coding sessions (working / idle / waiting / gone),
-- receives instant "needs you" events from a Claude Code hook (`Notification` / `Stop`),
+- receives instant "needs you" events from a Claude Code hook (`Notification` = blocked on
+  you; `Stop`/`UserPromptSubmit`/`SessionStart` are activity that clears it),
 - polls your Claude usage % (and resets) via the Anthropic rate-limit headers,
 - serves it all to the ESP32 over HTTP.
 
@@ -23,29 +24,37 @@ A single Python process that:
 
 ## Endpoints
 All require the `X-VibeMonitor-Token` header.
-- `GET /state` — `{ts, usage:{claude,codex}, sessions:[{id,tool,project,status,ageSec,waiting}]}`.
-  Sessions are sorted waiting-first; GONE sessions are dropped.
-- `POST /ack {"id":...}` — clear a session's waiting highlight (device tap-to-dismiss).
-- `POST /hook` — receives Claude Code hook events (used by `hooks/vibemonitor_hook.py`).
+- `GET /state` — `{ts, usage:{claude,codex}, sessions:[{id,tool,project,status,ageSec,waiting,count}], staleSec}`.
+  Sessions are sorted waiting-first and deduped per (tool, project); GONE sessions are
+  dropped from the response. `staleSec` is seconds since the last successful scan (`-1`
+  before the first scan) so a stalled bridge is detectable. `/state` is read-only.
+- `POST /ack {"id":...}` — clear the waiting highlight for the whole (tool, project) group
+  the session belongs to (device tap-to-dismiss).
+- `POST /hook` — receives Claude Code hook events (used by `hooks/vibemonitor_hook.py`);
+  the hub stamps the event time server-side.
 
 ## Status model
-- **waiting** — a hook `Notification`/`Stop` (Claude), or a trailing `task_complete` (Codex). Sorted to top.
-- **working** — session file active within `working_sec` (default 10s).
+- **working** — session log changed within `working_sec` (default 60s).
+- **waiting** — blocked on you. Claude: a `Notification` hook (a `Stop`/turn-finished is
+  *not* waiting). Codex (no blocked signal in its logs): a finished turn (`task_complete`).
+  A waiting session is highlighted for `waiting_ttl_sec` (default 30 min), then decays to
+  idle — never pinned forever. Sorted to top.
 - **idle** — quiet but newer than `gone_ttl_sec`.
-- **gone** — older than `gone_ttl_sec` (default 30m) → removed from the list.
+- **gone** — quiet longer than `gone_ttl_sec` (default 4h) → removed from the list (reaped
+  by the poll loop, not the `/state` request).
 
 ## Architecture
 `main.py` runs two daemon threads — a session scan loop (`collector_claude` +
-`collector_codex` → `Store`) and a usage poll loop (`usage` → `UsageCache`) — and serves
-the Flask `hub`. The `Store` is thread-safe (RLock, copy-on-read). The collector→hub split
-is a module boundary so a second machine's collector can POST to one hub later (multi-PC,
-designed but not shipped in v1).
+`collector_codex` → `Store`, which also reaps GONE sessions and publishes a `last_scan`
+heartbeat) and a usage poll loop (`usage` → `UsageCache`) — and serves the Flask `hub`.
+Each loop iteration is wrapped so one bad file can't silently kill the thread. The `Store`
+is thread-safe (RLock, copy-on-read). The collector→hub split is a module boundary so a
+second machine's collector can POST to one hub later (multi-PC, designed but not shipped in v1).
 
 ## Test
-`python -m pytest -q`   (51 tests)
+`python -m pytest -q`   (79 tests)
 
 ## Notes
 - The Codex sessions dir is huge; the collector only scans today's + yesterday's date folders.
-- Codex usage % is a placeholder in v1 (`ok:false`); the device shows "—".
+- Codex usage % is read from the `token_count` rate-limit events in the rollout logs.
 - `config.toml` is gitignored (it holds your token). Never commit it.
-- The next deliverable is the CYD firmware (Plan 2), built against these endpoints.

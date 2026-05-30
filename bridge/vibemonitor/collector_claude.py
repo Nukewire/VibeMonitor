@@ -28,6 +28,8 @@ def scan_claude(store: Store, projects_root: Path | None = None, now: float = 0.
                 mtime = f.stat().st_mtime
             except OSError:
                 continue
+            if now:
+                mtime = min(mtime, now)        # clamp clock skew / future files
             store.upsert(Session(
                 id=f.stem, tool="claude", project=project, last_activity=mtime,
             ))

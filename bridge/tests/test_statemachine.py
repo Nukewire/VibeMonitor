@@ -2,7 +2,7 @@ from vibemonitor.config import Config
 from vibemonitor.model import Session
 from vibemonitor.statemachine import derive_status, GONE
 
-CFG = Config(token="t", working_sec=10, idle_sec=120, gone_ttl_sec=1800)
+CFG = Config(token="t", working_sec=10, waiting_ttl_sec=1800, gone_ttl_sec=1800)
 
 def mk(**kw):
     base = dict(id="a", tool="claude", project="P", last_activity=1000.0)
@@ -26,9 +26,34 @@ def test_waiting_overrides_even_when_idle():
     s = mk(last_activity=1000.0, waiting=True, waiting_event="Notification", waiting_since=1001.0)
     assert derive_status(s, now=1100.0, cfg=CFG) == "waiting"
 
-def test_waiting_session_never_goes_gone():
-    s = mk(last_activity=1000.0, waiting=True, waiting_event="Stop", waiting_since=1001.0)
-    assert derive_status(s, now=1000.0 + 99999, cfg=CFG) == "waiting"
+def test_waiting_decays_to_idle_after_ttl():
+    cfg = Config(token="t", working_sec=10, waiting_ttl_sec=1800, gone_ttl_sec=100000)
+    s = mk(last_activity=1000.0, waiting=True, waiting_event="task_complete",
+           waiting_since=1000.0)
+    assert derive_status(s, now=1000.0 + 2000, cfg=cfg) == "idle"
+
+
+def test_waiting_still_waiting_within_ttl():
+    cfg = Config(token="t", working_sec=10, waiting_ttl_sec=1800, gone_ttl_sec=100000)
+    s = mk(last_activity=1000.0, waiting=True, waiting_event="Notification",
+           waiting_since=1000.0)
+    assert derive_status(s, now=1000.0 + 500, cfg=cfg) == "waiting"
+
+
+def test_stale_waiting_eventually_goes_gone():
+    cfg = Config(token="t", working_sec=10, waiting_ttl_sec=1800, gone_ttl_sec=3600)
+    s = mk(last_activity=1000.0, waiting=True, waiting_event="task_complete",
+           waiting_since=1000.0)
+    assert derive_status(s, now=1000.0 + 10000, cfg=cfg) == GONE
+
+
+def test_negative_elapsed_clamped_to_working():
+    # A future-dated last_activity (clock skew) means "very recently active" -> working.
+    # The max(0.0, ...) clamp keeps elapsed non-negative so downstream age math is sane.
+    cfg = Config(token="t", working_sec=10, waiting_ttl_sec=1800, gone_ttl_sec=3600)
+    s = mk(last_activity=5000.0)            # last_activity in the future vs now
+    assert derive_status(s, now=1000.0, cfg=cfg) == "working"
+
 
 def test_boundary_working_inclusive():
     # exactly working_sec old counts as working
@@ -52,18 +77,23 @@ def test_apply_notification_marks_waiting():
     assert st.get("x").waiting_event == "Notification"
 
 
-def test_apply_stop_marks_waiting():
+def test_apply_stop_is_activity_not_waiting():
     st = Store()
     st.upsert(mk(id="x", last_activity=1000.0))
-    apply_hook_event(st, {"id": "x", "event": "Stop", "ts": 1002.0,
+    apply_hook_event(st, {"id": "x", "event": "Notification", "ts": 1001.0,
                           "tool": "claude", "project": "P"})
     assert st.get("x").waiting is True
+    apply_hook_event(st, {"id": "x", "event": "Stop", "ts": 1005.0,
+                          "tool": "claude", "project": "P"})
+    s = st.get("x")
+    assert s.waiting is False          # Stop clears the blocked state
+    assert s.last_activity == 1005.0   # and counts as activity
 
 
 def test_apply_userpromptsubmit_clears_waiting_and_touches():
     st = Store()
     st.upsert(mk(id="x", last_activity=1000.0))
-    apply_hook_event(st, {"id": "x", "event": "Stop", "ts": 1002.0,
+    apply_hook_event(st, {"id": "x", "event": "Notification", "ts": 1002.0,
                           "tool": "claude", "project": "P"})
     apply_hook_event(st, {"id": "x", "event": "UserPromptSubmit", "ts": 1010.0,
                           "tool": "claude", "project": "P"})
