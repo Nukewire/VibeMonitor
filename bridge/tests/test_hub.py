@@ -107,3 +107,36 @@ def test_state_hides_temp_junk():
     body = make_client(st).get("/state", headers=H).get_json()
     projs = [s["project"] for s in body["sessions"]]
     assert projs == ["WebApp"]        # Temp/tmp filtered out
+
+
+def test_ack_clears_whole_project_group():
+    st = Store()
+    st.upsert(Session(id="a", tool="codex", project="P", last_activity=1000.0,
+                      waiting=True, waiting_event="task_complete", waiting_since=1001.0))
+    st.upsert(Session(id="b", tool="codex", project="P", last_activity=1001.0,
+                      waiting=True, waiting_event="task_complete", waiting_since=1001.0))
+    c = make_client(st)
+    r = c.post("/ack", headers=H, json={"id": "a"})   # ack representative -> both clear
+    assert r.status_code == 200
+    assert st.get("a").waiting is False
+    assert st.get("b").waiting is False
+
+
+def test_state_does_not_mutate_store():
+    st = Store()
+    st.upsert(Session(id="x", tool="claude", project="P", last_activity=-800.0))  # gone vs clock 1005
+    c = make_client(st)
+    body = c.get("/state", headers=H).get_json()
+    assert all(s["id"] != "x" for s in body["sessions"])   # filtered from response
+    assert st.get("x") is not None                          # but NOT removed (reaper owns removal)
+
+
+def test_hook_stamps_server_ts():
+    st = Store()
+    c = make_client(st)
+    c.post("/hook", headers=H,
+           json={"id": "z", "event": "Notification", "ts": 9_999_999_999.0,
+                 "tool": "claude", "project": "P"})
+    s = st.get("z")
+    assert s is not None
+    assert s.waiting_since == 1005.0    # server clock (make_client clock=1005.0), not client ts

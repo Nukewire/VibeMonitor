@@ -47,7 +47,8 @@ def _dedupe_and_filter(rows: list[dict]) -> list[dict]:
     return merged
 
 
-def create_app(store: Store, cfg: Config, usage_provider=None, clock=time.time) -> Flask:
+def create_app(store: Store, cfg: Config, usage_provider=None, clock=time.time,
+               heartbeat=None) -> Flask:
     app = Flask(__name__)
 
     def require_token(fn):
@@ -66,30 +67,38 @@ def create_app(store: Store, cfg: Config, usage_provider=None, clock=time.time) 
         for s in store.snapshot():
             status = derive_status(s, now=now, cfg=cfg)
             if status == GONE:
-                store.remove(s.id)
-                continue
+                continue          # filtered from response; poll-loop reaper owns removal
             out.append({
                 "id": s.id, "tool": s.tool, "project": s.project,
-                "status": status, "ageSec": int(now - s.last_activity),
-                "waiting": s.waiting,
+                "status": status, "ageSec": int(max(0.0, now - s.last_activity)),
+                "waiting": status == "waiting",
             })
         out = _dedupe_and_filter(out)
-        out.sort(key=lambda x: (_ORDER.get(x["status"], 9), x["ageSec"]))
+        out.sort(key=lambda x: (_ORDER.get(x["status"], 9), x["ageSec"], x["tool"], x["project"]))
         usage = usage_provider() if usage_provider else {"claude": {}, "codex": {}}
-        return jsonify({"ts": int(now), "usage": usage, "sessions": out})
+        last_scan = (heartbeat or {}).get("last_scan", 0.0)
+        stale_sec = int(max(0.0, now - last_scan)) if last_scan else -1
+        return jsonify({"ts": int(now), "usage": usage, "sessions": out,
+                        "staleSec": stale_sec})
 
     @app.post("/ack")
     @require_token
     def ack():
         sid = (request.get_json(silent=True) or {}).get("id")
         if sid:
-            store.ack(sid)
+            now = clock()
+            cur = store.get(sid)
+            if cur is not None:
+                store.ack_group(cur.tool, cur.project, ts=now)
+            else:
+                store.ack(sid, ts=now)
         return jsonify({"ok": True})
 
     @app.post("/hook")
     @require_token
     def hook():
         ev = request.get_json(silent=True) or {}
+        ev["ts"] = clock()      # trust the hub clock, not the hook process clock
         apply_hook_event(store, ev)
         return jsonify({"ok": True})
 
