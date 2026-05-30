@@ -11,15 +11,24 @@ from vibemonitor.collector_claude import scan_claude
 from vibemonitor.collector_codex import scan_codex
 from vibemonitor.usage import claude_usage, codex_usage, read_claude_oauth_token
 from vibemonitor.hub import create_app
+from vibemonitor.statemachine import derive_status
 
 
-def _session_loop(store: Store, cfg, stop: threading.Event) -> None:
+def _session_loop(store: Store, cfg, stop: threading.Event,
+                  heartbeat: dict | None = None) -> None:
     while not stop.is_set():
         now = time.time()
-        if cfg.enable_claude:
-            scan_claude(store, now=now)
-        if cfg.enable_codex:
-            scan_codex(store, now=now)
+        try:
+            if cfg.enable_claude:
+                scan_claude(store, now=now)
+            if cfg.enable_codex:
+                scan_codex(store, now=now)
+            for s in store.snapshot():                       # reap gone atomically here
+                store.remove_if_gone(s.id, now=now, cfg=cfg, derive=derive_status)
+            if heartbeat is not None:
+                heartbeat["last_scan"] = now
+        except Exception as e:                               # never die silently
+            print(f"[session_loop] scan error (continuing): {e!r}", file=sys.stderr)
         stop.wait(cfg.poll_sessions_sec)
 
 
@@ -27,11 +36,14 @@ def _usage_loop(cache: UsageCache, cfg, claude_token: str | None,
                 stop: threading.Event) -> None:
     while not stop.is_set():
         now = time.time()
-        cache.set({
-            "claude": claude_usage(claude_token, now=now) if cfg.enable_claude
-                      else {"ok": False},
-            "codex": codex_usage(now=now) if cfg.enable_codex else {"ok": False},
-        })
+        try:
+            cache.set({
+                "claude": claude_usage(claude_token, now=now) if cfg.enable_claude
+                          else {"ok": False},
+                "codex": codex_usage(now=now) if cfg.enable_codex else {"ok": False},
+            })
+        except Exception as e:
+            print(f"[usage_loop] error (continuing): {e!r}", file=sys.stderr)
         stop.wait(cfg.poll_usage_sec)
 
 
@@ -52,12 +64,14 @@ def main(argv: list[str] | None = None) -> int:
     store = Store()
     cache = UsageCache()
     stop = threading.Event()
+    heartbeat: dict = {"last_scan": 0.0}
 
-    threading.Thread(target=_session_loop, args=(store, cfg, stop), daemon=True).start()
+    threading.Thread(target=_session_loop, args=(store, cfg, stop, heartbeat),
+                     daemon=True).start()
     threading.Thread(target=_usage_loop, args=(cache, cfg, claude_token, stop),
                      daemon=True).start()
 
-    app = create_app(store, cfg, usage_provider=cache.get)
+    app = create_app(store, cfg, usage_provider=cache.get, heartbeat=heartbeat)
     print(f"VibeMonitor hub on http://{cfg.host}:{cfg.port}  (Ctrl+C to stop)")
     try:
         app.run(host=cfg.host, port=cfg.port, threaded=True)
