@@ -32,8 +32,10 @@ def derive_status(session: Session, now: float, cfg: Config) -> str:
     return "idle"
 
 
-WAITING_EVENTS = {"Notification", "Stop"}
-ACTIVITY_EVENTS = {"UserPromptSubmit", "SessionStart"}
+# Only a true block-on-user prompt counts as waiting for Claude.
+WAITING_EVENTS = {"Notification"}
+# Turn boundaries / prompts are activity: they clear waiting and refresh recency.
+ACTIVITY_EVENTS = {"Stop", "UserPromptSubmit", "SessionStart"}
 
 
 def apply_hook_event(store: Store, ev: dict) -> None:
