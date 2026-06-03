@@ -160,6 +160,43 @@ Fields: `claude_pct` / `codex_pct` (0–100), `claude_week_pct`, `claude_reset_m
 `any_waiting` (bool), `stale_sec`, and `waiting` — a list of `{tool, project, summary}`
 for the sessions that need you.
 
+**Ready-made entities** — turn that one REST sensor's attributes into proper named
+entities (so they show up in dashboards, automations, and the logbook):
+
+```yaml
+# configuration.yaml — derives entities from the `sensor.vibemonitor` REST sensor above
+template:
+  - sensor:
+      - name: Claude Usage
+        unique_id: vibemonitor_claude_pct
+        unit_of_measurement: "%"
+        state: "{{ state_attr('sensor.vibemonitor', 'claude_pct') }}"
+      - name: Codex Usage
+        unique_id: vibemonitor_codex_pct
+        unit_of_measurement: "%"
+        state: "{{ state_attr('sensor.vibemonitor', 'codex_pct') }}"
+      - name: VibeMonitor Waiting Count
+        unique_id: vibemonitor_waiting_count
+        state: "{{ state_attr('sensor.vibemonitor', 'waiting_count') }}"
+  - binary_sensor:
+      - name: VibeMonitor Needs Me
+        unique_id: vibemonitor_needs_me
+        device_class: problem                      # on = a session is waiting on you
+        state: "{{ state_attr('sensor.vibemonitor', 'any_waiting') | bool(false) }}"
+      - name: VibeMonitor Bridge Online
+        unique_id: vibemonitor_bridge_online
+        device_class: connectivity                 # off = bridge stalled/unreachable
+        state: >
+          {% set s = state_attr('sensor.vibemonitor', 'stale_sec') %}
+          {{ s is not none and s >= 0 and s < 30 }}
+```
+
+That gives you `binary_sensor.vibemonitor_needs_me` (flip a light off it),
+`binary_sensor.vibemonitor_bridge_online` (alert if the bridge dies), and
+`sensor.claude_usage` / `sensor.codex_usage` for dashboards. The webhook below is still
+the lowest-latency way to react the instant a session needs you; these entities are the
+always-available polled view.
+
 **Webhook (push)** — set a Home Assistant webhook URL in `config.toml`:
 
 ```toml
