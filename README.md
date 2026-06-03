@@ -1,4 +1,4 @@
-# VibeMonitor - ESP32 CYD Claude Code and Codex Session and Usage Montior
+# VibeMonitor - ESP32 CYD Claude Code and Codex Session and Usage Monitor
 
 A tiny desk display for your Claude Code and OpenAI Codex CLI sessions — live usage gauges and an at-a-glance list of what every session is doing, with silent "needs you" alerts you dismiss by tapping the screen.
 
