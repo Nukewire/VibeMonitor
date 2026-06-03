@@ -41,7 +41,9 @@ Everything runs in one Python process in v1. The collector → hub split is a cl
 
 ## Hardware
 
-VibeMonitor targets the **AITRIP ESP32-2432S028R**, commonly sold as the **"Cheap Yellow Display" (CYD)** — a 2.8", 320×240 resistive-touch TFT bonded to an ESP32, around $15 (Amazon ASIN **B0CKYVPWX9**).
+VibeMonitor targets the **AITRIP ESP32-2432S028R**, commonly sold as the **"Cheap Yellow Display" (CYD)** — a 2.8", 320×240 resistive-touch TFT bonded to an ESP32, around $15. This is the exact unit used here: [Amazon — ASIN B0CKYVPWX9](https://www.amazon.com/dp/B0CKYVPWX9).
+
+The device in the photos sits in a 3D-printed CYD case: [ESP32 CYD case on MakerWorld](https://makerworld.com/en/models/890009-esp32-cyd) (optional, but it makes a tidy desk toy).
 
 > **Important board gotcha — ST7789, not ILI9341.** Many CYD guides assume an ILI9341 controller. This AITRIP variant uses the **ST7789** controller. Getting this wrong gives inverted colors or wrong geometry. The correct TFT_eSPI build flags (already set in `firmware/VibeMonitor/platformio.ini`) are:
 >
