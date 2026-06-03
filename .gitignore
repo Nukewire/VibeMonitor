@@ -27,9 +27,11 @@ venv/
 *.log
 serial_log.txt
 
-# --- Agent / scratch ---
+# --- Agent / scratch (private; kept local, not shared publicly) ---
 .remember/
 .claude/
+CLAUDE.md
+docs/superpowers/
 _vm_probe.txt
 
 # --- OS cruft ---
