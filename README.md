@@ -7,8 +7,12 @@ A tiny desk display for your Claude Code and OpenAI Codex CLI sessions — live 
 ![Firmware: ESP32 + PlatformIO](https://img.shields.io/badge/firmware-ESP32%20%C2%B7%20PlatformIO-FF7F00)
 ![UI: LVGL 8.3](https://img.shields.io/badge/UI-LVGL%208.3-1d4ed8)
 
-<!-- Drop a photo of the device on your desk here — it makes the repo land much better:
-     ![VibeMonitor on a desk](docs/media/device.jpg) -->
+<p align="center">
+  <img src="docs/media/vibemonitor_sessions.png" alt="VibeMonitor sessions tab — live Claude/Codex session list" width="49%">
+  &nbsp;
+  <img src="docs/media/vibemonitor_usage.png" alt="VibeMonitor usage tab — Claude and Codex usage gauges" width="49%">
+</p>
+<p align="center"><sub><b>Sessions tab</b> — working / idle / waiting at a glance &nbsp;·&nbsp; <b>Usage tab</b> — Claude &amp; Codex usage % with reset countdowns</sub></p>
 
 ## What it does
 
