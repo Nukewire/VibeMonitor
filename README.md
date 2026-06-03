@@ -61,7 +61,7 @@ VibeMonitor/
   bridge/      Python/Flask bridge: reads ~/.claude + ~/.codex, serves /state, /ack, /hook
   firmware/    PlatformIO + LVGL app for the ESP32 CYD (plus a mock hub and a smoke test)
   icons/       Source Claude/Codex PNGs + make_lvgl_icons.py (generates firmware icons.c/.h)
-  docs/        Design spec and implementation plans
+  docs/        Screenshots and media
 ```
 
 ## Bridge setup (PC side)
@@ -76,7 +76,7 @@ cp config.example.toml config.toml          # then edit config.toml and set a ra
 python -m vibemonitor.main config.toml       # starts the hub (default http://0.0.0.0:5151)
 ```
 
-The Claude OAuth token used for the usage gauge is auto-read from `~/.claude/.credentials.json`; you only set `[claude] oauth_token` in `config.toml` to override it.
+The Claude OAuth token used for the usage gauge is auto-read from `~/.claude/.credentials.json` on **Windows and Linux**; you only set `[claude] oauth_token` in `config.toml` to override it. On **macOS** Claude Code keeps that token in the system Keychain rather than a file, so the bridge can't auto-read it — set `[claude] oauth_token` manually there (see [Platform support](#platform-support)).
 
 ### Install the Claude Code hooks (instant "waiting" alerts)
 
@@ -117,6 +117,23 @@ These are stored in NVS (the token is obfuscated), so subsequent boots connect s
 Build is PlatformIO + Arduino-ESP32 + LVGL 8.3 + TFT_eSPI, configured entirely via `build_flags` in `platformio.ini` (no `User_Setup.h` needed). See the [Hardware](#hardware) section for the ST7789 flags.
 
 > Tip: `firmware/mock_hub/` is a tiny Flask server that serves canned `/state` fixtures, so you can develop the UI without a live bridge.
+
+## Platform support
+
+The bridge is pure Python and the firmware is built with PlatformIO, so both run on **Windows, macOS, and Linux**. The session list and Codex usage work the same everywhere; the only difference is how the Claude usage gauge gets its OAuth token:
+
+| OS | Claude usage gauge | Notes |
+|----|--------------------|-------|
+| **Windows** | Auto — reads `%USERPROFILE%\.claude\.credentials.json` | Turnkey. |
+| **Linux** | Auto — reads `~/.claude/.credentials.json` | Turnkey. |
+| **macOS** | Manual — set `[claude] oauth_token` in `config.toml` | Claude Code stores the token in the Keychain, not a file, so the bridge can't auto-read it (yet). |
+
+A few extra notes:
+
+- **macOS token:** grab the value from the Keychain (Keychain Access → search "Claude", or `security find-generic-password -s "Claude Code-credentials" -w`) and paste it into `[claude] oauth_token`. The token rotates every few hours, so this is best treated as a temporary workaround until a native Keychain reader lands — contributions welcome.
+- **Hook installer uses `python`.** If your macOS/Linux setup only has `python3` on `PATH`, the installed hook command will silently no-op (waiting status still works, just inferred from file activity instead of instant). Adjust the command in `~/.claude/settings.json` to `python3` if so.
+- **`CLAUDE_CONFIG_DIR`:** if you've relocated your Claude config via this env var, the bridge currently still looks in the default `~/.claude` location.
+- **Auto-start at login** is OS-specific and not bundled: Windows uses a Scheduled Task, macOS a `launchd` plist, Linux a `systemd --user` service. The bridge itself is just `python -m vibemonitor.main config.toml`.
 
 ## Data contract
 
