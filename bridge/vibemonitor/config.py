@@ -22,6 +22,7 @@ class Config:
     summary_max_chars: int = 2000
     openrouter_api_key: str | None = None
     poll_summary_sec: float = 15.0
+    ha_webhook_url: str | None = None
 
 
 def load_config(path: str | Path) -> Config:
@@ -35,6 +36,7 @@ def load_config(path: str | Path) -> Config:
     providers = data.get("providers", {})
     summary = data.get("summary", {})
     openrouter = data.get("openrouter", {})
+    homeassistant = data.get("homeassistant", {})
     return Config(
         token=token,
         port=int(data.get("port", 8787)),
@@ -52,4 +54,5 @@ def load_config(path: str | Path) -> Config:
         summary_max_chars=int(summary.get("max_chars", 2000)),
         openrouter_api_key=openrouter.get("api_key"),
         poll_summary_sec=float(poll.get("summary_sec", 15.0)),
+        ha_webhook_url=homeassistant.get("webhook_url"),
     )

@@ -24,6 +24,7 @@ VibeMonitor turns a ~$15 ESP32 touchscreen into an ambient status panel for your
 - **AI session summaries** *(optional)* — a one-line "what they're working on" per session (e.g. *"Refactor auth middleware"*), generated from the latest prompt by a cheap model via [OpenRouter](https://openrouter.ai). Opt-in. See [Session summaries](#session-summaries-optional).
 - **Web dashboard** — the bridge also serves the same view in a browser at `http://<bridge-host>:5151/`, so you can glance at it without the hardware. See [Web dashboard](#web-dashboard).
 - **On-device settings** — tap the **SETTINGS** tab to adjust screen **brightness**, switch **light/dark theme**, and set a **sleep** timeout (blank the display after N minutes with nothing waiting; tap to wake). Saved on the device.
+- **Home Assistant** *(optional)* — a flat `GET /ha` sensor endpoint plus an outbound webhook that fires when a session needs you (and when it clears), so you can drive lights/notifications. See [Home Assistant](#home-assistant).
 
 ## Architecture
 
@@ -132,6 +133,66 @@ api_key = "sk-or-v1-..."                  # from https://openrouter.ai/keys
 > OpenRouter key lives only in `config.toml`, which is gitignored. Everything else about
 > VibeMonitor stays local.
 
+## Home Assistant
+
+The bridge exposes a flat, automation-friendly endpoint and can push events, so you can
+surface your sessions in Home Assistant and drive lights/notifications off them.
+
+**Sensor (`GET /ha`)** — token-protected, flat scalars plus a `waiting` list:
+
+```yaml
+# configuration.yaml — poll the bridge as a REST sensor
+sensor:
+  - platform: rest
+    name: VibeMonitor
+    resource: http://<bridge-ip>:5151/ha
+    headers:
+      X-VibeMonitor-Token: !secret vibemonitor_token
+    scan_interval: 10
+    value_template: "{{ value_json.waiting_count }}"
+    json_attributes:
+      [claude_pct, codex_pct, claude_reset_min, waiting_count, working_count,
+       any_waiting, stale_sec, waiting]
+```
+
+Fields: `claude_pct` / `codex_pct` (0–100), `claude_week_pct`, `claude_reset_min`,
+`*_ok`, `waiting_count` / `working_count` / `idle_count` / `session_count`,
+`any_waiting` (bool), `stale_sec`, and `waiting` — a list of `{tool, project, summary}`
+for the sessions that need you.
+
+**Webhook (push)** — set a Home Assistant webhook URL in `config.toml`:
+
+```toml
+[homeassistant]
+webhook_url = "http://homeassistant.local:8123/api/webhook/vibemonitor-xxxxx"
+```
+
+The bridge POSTs `{"event":"waiting","tool":...,"project":...,"summary":...,"ts":...}`
+the moment a project starts waiting on you, and `{"event":"cleared",...}` when it
+resolves — edge-triggered, so one event per transition. Example automation:
+
+```yaml
+automation:
+  - alias: VibeMonitor needs me
+    trigger:
+      - platform: webhook
+        webhook_id: vibemonitor-xxxxx
+        local_only: true
+    action:
+      - choose:
+          - conditions: "{{ trigger.json.event == 'waiting' }}"
+            sequence:
+              - service: light.turn_on
+                target: { entity_id: light.office }
+                data: { rgb_color: [245, 166, 35] }   # amber
+          - conditions: "{{ trigger.json.event == 'cleared' }}"
+            sequence:
+              - service: light.turn_off
+                target: { entity_id: light.office }
+```
+
+Both are optional and local-network only; the webhook URL stays in the gitignored `config.toml`.
+
 ## Firmware setup (ESP32 CYD)
 
 Requires [PlatformIO](https://platformio.org/) (the CLI or the VS Code extension).
@@ -173,7 +234,7 @@ A few extra notes:
 
 ## Data contract
 
-The data endpoints (`/state`, `/ack`, `/hook`) require the header `X-VibeMonitor-Token: <token>` (a missing or wrong token returns `401`). The dashboard shell at `GET /` is unauthenticated (it carries no data; its JS supplies the token when it fetches `/state`). The hub binds to the LAN; the token is the only gate, which is appropriate for a desk toy on a trusted network. No provider secrets are ever sent to the device — they stay on the PC.
+The data endpoints (`/state`, `/ha`, `/ack`, `/hook`) require the header `X-VibeMonitor-Token: <token>` (a missing or wrong token returns `401`). The dashboard shell at `GET /` is unauthenticated (it carries no data; its JS supplies the token when it fetches `/state`). The hub binds to the LAN; the token is the only gate, which is appropriate for a desk toy on a trusted network. No provider secrets are ever sent to the device — they stay on the PC.
 
 ### `GET /state`
 

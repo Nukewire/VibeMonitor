@@ -42,3 +42,11 @@ max_chars = 2000                                   # cap the prompt text sent to
 # Your OpenRouter API key (https://openrouter.ai/keys). Required only when
 # [summary] enabled = true. Keep this out of version control.
 # api_key = "sk-or-v1-..."
+
+[homeassistant]
+# Optional: when set, the bridge POSTs a small JSON payload to this URL whenever a
+# session starts waiting on you ({event:"waiting", ...}) and again when it clears
+# ({event:"cleared", ...}). Point it at a Home Assistant webhook automation to drive
+# lights/notifications. Leave unset to disable. (Tier 1 — the GET /ha sensor endpoint —
+# needs no config; it's always available behind the token.)
+# webhook_url = "http://homeassistant.local:8123/api/webhook/vibemonitor-xxxxx"

@@ -31,6 +31,38 @@ def test_state_summary_absent_without_provider():
     assert "summary" not in row          # no provider -> field omitted, contract unchanged
 
 
+def test_ha_requires_token():
+    assert make_client(Store()).get("/ha").status_code == 401
+
+
+def test_ha_flat_fields_and_counts():
+    st = Store()
+    # a waiting claude session (waiting_since fresh) + an idle codex one
+    st.upsert(Session(id="w", tool="claude", project="WebApp", last_activity=1000.0,
+                      waiting=True, waiting_event="Notification", waiting_since=1004.0))
+    st.upsert(Session(id="i", tool="codex", project="ApiServer", last_activity=200.0))
+    usage = {"claude": {"ok": True, "pct": 0.24, "weekPct": 0.06, "resetSec": 8040},
+             "codex": {"ok": False, "pct": None, "weekPct": None, "resetSec": None}}
+    c = make_client(st, usage=usage,
+                    summary_provider=lambda sid: "Refactor auth" if sid == "w" else None)
+    body = c.get("/ha", headers=H).get_json()
+    assert body["claude_ok"] is True
+    assert body["claude_pct"] == 24 and body["claude_week_pct"] == 6
+    assert body["claude_reset_min"] == 134          # 8040s -> 134 min
+    assert body["codex_ok"] is False and body["codex_pct"] is None
+    assert body["waiting_count"] == 1 and body["idle_count"] == 1
+    assert body["session_count"] == 2 and body["any_waiting"] is True
+    assert body["waiting"] == [{"tool": "claude", "project": "WebApp",
+                                "summary": "Refactor auth"}]
+
+
+def test_ha_handles_missing_usage_gracefully():
+    body = make_client(Store()).get("/ha", headers=H).get_json()
+    assert body["claude_pct"] is None and body["claude_ok"] is False
+    assert body["waiting_count"] == 0 and body["any_waiting"] is False
+    assert body["waiting"] == []
+
+
 def test_state_requires_token():
     c = make_client(Store())
     assert c.get("/state").status_code == 401

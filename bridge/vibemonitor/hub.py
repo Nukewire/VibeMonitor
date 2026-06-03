@@ -5,15 +5,12 @@ from pathlib import Path
 from flask import Flask, jsonify, request, Response
 from vibemonitor.config import Config
 from vibemonitor.model import Store
-from vibemonitor.statemachine import derive_status, apply_hook_event, GONE
+from vibemonitor.statemachine import derive_status, apply_hook_event, GONE, JUNK_PROJECTS
 
 _STATIC_DIR = Path(__file__).parent / "static"
 
 # status sort order: waiting first, then working, then idle
 _ORDER = {"waiting": 0, "working": 1, "idle": 2}
-
-# project names that are temp/cache dirs, not real projects -> hidden from the device
-_JUNK_PROJECTS = {"temp", "tmp", "cache", ".cache", "local", "appdata", "roaming"}
 
 
 def _dedupe_and_filter(rows: list[dict]) -> list[dict]:
@@ -27,7 +24,7 @@ def _dedupe_and_filter(rows: list[dict]) -> list[dict]:
     """
     groups: dict[tuple[str, str], list[dict]] = {}
     for r in rows:
-        if r["project"].strip().lower() in _JUNK_PROJECTS:
+        if r["project"].strip().lower() in JUNK_PROJECTS:
             continue
         groups.setdefault((r["tool"], r["project"]), []).append(r)
 
@@ -71,9 +68,9 @@ def create_app(store: Store, cfg: Config, usage_provider=None, clock=time.time,
             return Response("dashboard.html not found", status=404, mimetype="text/plain")
         return Response(html.read_text(encoding="utf-8"), mimetype="text/html")
 
-    @app.get("/state")
-    @require_token
-    def state():
+    def _collect():
+        """Shared computation for /state and /ha: deduped+sorted session rows, the
+        usage dict, and staleSec. Single source of truth for both endpoints."""
         now = clock()
         out = []
         for s in store.snapshot():
@@ -93,8 +90,57 @@ def create_app(store: Store, cfg: Config, usage_provider=None, clock=time.time,
         usage = usage_provider() if usage_provider else {"claude": {}, "codex": {}}
         last_scan = (heartbeat or {}).get("last_scan", 0.0)
         stale_sec = int(max(0.0, now - last_scan)) if last_scan else -1
+        return now, out, usage, stale_sec
+
+    @app.get("/state")
+    @require_token
+    def state():
+        now, out, usage, stale_sec = _collect()
         return jsonify({"ts": int(now), "usage": usage, "sessions": out,
                         "staleSec": stale_sec})
+
+    @app.get("/ha")
+    @require_token
+    def homeassistant():
+        """Flat, Home-Assistant-template-friendly view of the same data. Scalars for
+        easy REST sensors; `waiting` lists which projects need you."""
+        _now, rows, usage, stale_sec = _collect()
+
+        def _u(provider: str, field: str):
+            v = (usage.get(provider) or {}).get(field)
+            return v
+
+        def _pct(provider: str, field: str):
+            v = _u(provider, field)
+            return round(v * 100) if isinstance(v, (int, float)) else None
+
+        def _reset_min(provider: str):
+            v = _u(provider, "resetSec")
+            return round(v / 60) if isinstance(v, (int, float)) else None
+
+        counts = {"waiting": 0, "working": 0, "idle": 0}
+        for r in rows:
+            if r["status"] in counts:
+                counts[r["status"]] += 1
+        waiting = [{"tool": r["tool"], "project": r["project"],
+                    "summary": r.get("summary")} for r in rows if r["status"] == "waiting"]
+        return jsonify({
+            "claude_ok": bool(_u("claude", "ok")),
+            "claude_pct": _pct("claude", "pct"),
+            "claude_week_pct": _pct("claude", "weekPct"),
+            "claude_reset_min": _reset_min("claude"),
+            "codex_ok": bool(_u("codex", "ok")),
+            "codex_pct": _pct("codex", "pct"),
+            "codex_week_pct": _pct("codex", "weekPct"),
+            "codex_reset_min": _reset_min("codex"),
+            "waiting_count": counts["waiting"],
+            "working_count": counts["working"],
+            "idle_count": counts["idle"],
+            "session_count": len(rows),
+            "any_waiting": counts["waiting"] > 0,
+            "stale_sec": stale_sec,
+            "waiting": waiting,
+        })
 
     @app.post("/ack")
     @require_token

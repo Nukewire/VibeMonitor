@@ -5,6 +5,13 @@ from vibemonitor.config import Config
 # Sentinel: session has been absent long enough to be considered gone
 GONE = "gone"
 
+# project names that are temp/cache dirs, not real projects -> hidden everywhere
+JUNK_PROJECTS = {"temp", "tmp", "cache", ".cache", "local", "appdata", "roaming"}
+
+
+def is_junk_project(project: str) -> bool:
+    return project.strip().lower() in JUNK_PROJECTS
+
 
 def derive_status(session: Session, now: float, cfg: Config) -> str:
     """Return the display status for a session.

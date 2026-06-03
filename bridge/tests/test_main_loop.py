@@ -97,6 +97,27 @@ def test_summary_loop_disabled_without_key(monkeypatch, tmp_path):
     assert summaries.get("s") is None      # no key -> never summarizes
 
 
+def test_session_loop_fires_waiting_webhook(monkeypatch):
+    from vibemonitor.notifier import WebhookNotifier
+    store = Store()
+    store.upsert(Session(id="w", tool="claude", project="WebApp", last_activity=1_000_000.0,
+                         waiting=True, waiting_event="Notification", waiting_since=1_000_000.0))
+    cfg = Config(token="t", poll_sessions_sec=0.01, working_sec=60,
+                 waiting_ttl_sec=1800, gone_ttl_sec=14400,
+                 enable_claude=False, enable_codex=False)
+    monkeypatch.setattr(main_mod.time, "time", lambda: 1_000_000.0)
+    sent = []
+    notifier = WebhookNotifier("http://hook", poster=lambda u, p, timeout=5.0: sent.append(p),
+                               clock=lambda: 1_000_000.0)
+    stop = threading.Event()
+    t = threading.Thread(target=main_mod._session_loop,
+                         args=(store, cfg, stop, None, notifier, None), daemon=True)
+    t.start()
+    time.sleep(0.1)
+    stop.set(); t.join(timeout=1.0)
+    assert any(e["event"] == "waiting" and e["project"] == "WebApp" for e in sent)
+
+
 def test_summary_loop_forgets_reaped_sessions(monkeypatch, tmp_path):
     from vibemonitor.summarycache import SummaryCache, hash_text
     summaries = SummaryCache()

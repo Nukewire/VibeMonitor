@@ -11,13 +11,29 @@ from vibemonitor.collector_claude import scan_claude, claude_session_paths
 from vibemonitor.collector_codex import scan_codex
 from vibemonitor.usage import claude_usage, codex_usage, read_claude_oauth_token
 from vibemonitor.hub import create_app
-from vibemonitor.statemachine import derive_status
+from vibemonitor.statemachine import derive_status, is_junk_project
 from vibemonitor.summarizer import extract_latest_prompt, summarize
 from vibemonitor.summarycache import SummaryCache, hash_text
+from vibemonitor.notifier import WebhookNotifier
+
+
+def _waiting_groups(store: Store, cfg, now: float,
+                    summaries: SummaryCache | None) -> dict[tuple[str, str], str | None]:
+    """Map (tool, project) -> summary for groups currently waiting on the user.
+    Mirrors the hub's dedupe/junk filtering so webhook events match what's displayed."""
+    groups: dict[tuple[str, str], str | None] = {}
+    for s in store.snapshot():
+        if derive_status(s, now=now, cfg=cfg) != "waiting" or is_junk_project(s.project):
+            continue
+        key = (s.tool, s.project)
+        if key not in groups:                # first waiting session in the group wins
+            groups[key] = summaries.get(s.id) if summaries else None
+    return groups
 
 
 def _session_loop(store: Store, cfg, stop: threading.Event,
-                  heartbeat: dict | None = None) -> None:
+                  heartbeat: dict | None = None, notifier: WebhookNotifier | None = None,
+                  summaries: SummaryCache | None = None) -> None:
     while not stop.is_set():
         now = time.time()
         try:
@@ -27,6 +43,8 @@ def _session_loop(store: Store, cfg, stop: threading.Event,
                 scan_codex(store, now=now)
             for s in store.snapshot():                       # reap gone atomically here
                 store.remove_if_gone(s.id, now=now, cfg=cfg, derive=derive_status)
+            if notifier is not None:                         # HA waiting/cleared webhooks
+                notifier.update(_waiting_groups(store, cfg, now, summaries))
             if heartbeat is not None:
                 heartbeat["last_scan"] = now
         except Exception as e:                               # never die silently
@@ -105,10 +123,14 @@ def main(argv: list[str] | None = None) -> int:
     store = Store()
     cache = UsageCache()
     summaries = SummaryCache()
+    notifier = WebhookNotifier(cfg.ha_webhook_url) if cfg.ha_webhook_url else None
+    if notifier:
+        print(f"Home Assistant webhook enabled -> {cfg.ha_webhook_url}", file=sys.stderr)
     stop = threading.Event()
     heartbeat: dict = {"last_scan": 0.0}
 
-    threading.Thread(target=_session_loop, args=(store, cfg, stop, heartbeat),
+    threading.Thread(target=_session_loop,
+                     args=(store, cfg, stop, heartbeat, notifier, summaries),
                      daemon=True).start()
     threading.Thread(target=_usage_loop, args=(cache, cfg, stop),
                      daemon=True).start()
