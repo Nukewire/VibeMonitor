@@ -2,6 +2,14 @@
 
 A tiny desk display for your Claude Code and OpenAI Codex CLI sessions — live usage gauges and an at-a-glance list of what every session is doing, with silent "needs you" alerts you dismiss by tapping the screen.
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![Bridge: Python 3.11+](https://img.shields.io/badge/bridge-Python%203.11%2B-3776AB?logo=python&logoColor=white)
+![Firmware: ESP32 + PlatformIO](https://img.shields.io/badge/firmware-ESP32%20%C2%B7%20PlatformIO-FF7F00)
+![UI: LVGL 8.3](https://img.shields.io/badge/UI-LVGL%208.3-1d4ed8)
+
+<!-- Drop a photo of the device on your desk here — it makes the repo land much better:
+     ![VibeMonitor on a desk](docs/media/device.jpg) -->
+
 ## What it does
 
 VibeMonitor turns a ~$15 ESP32 touchscreen into an ambient status panel for your AI coding sessions:
@@ -110,19 +118,20 @@ All three endpoints require the header `X-VibeMonitor-Token: <token>` (a missing
 
 ### `GET /state`
 
-Returns the current usage and the deduped, waiting-first session list (sessions past their TTL are already dropped server-side):
+Returns the current usage and the deduped, waiting-first session list (sessions past their TTL are already dropped server-side). `staleSec` is seconds since the last successful scan (`-1` before the first scan), so a stalled bridge is detectable from the device:
 
 ```json
 {
   "ts": 1780000000,
   "usage": {
-    "claude": { "ok": true,  "pct": 0.24, "window": "5h",      "resetSec": 8040, "weekPct": 0.04 },
-    "codex":  { "ok": false, "pct": null, "window": "session", "resetSec": null, "weekPct": null }
+    "claude": { "ok": true,  "pct": 0.24, "window": "5h", "resetSec": 8040, "weekPct": 0.04 },
+    "codex":  { "ok": false, "pct": null, "window": "5h", "resetSec": null, "weekPct": null }
   },
   "sessions": [
     { "id": "c21ef32d", "tool": "claude", "project": "WebApp",
       "status": "waiting", "ageSec": 3, "waiting": true, "count": 1 }
-  ]
+  ],
+  "staleSec": 2
 }
 ```
 
