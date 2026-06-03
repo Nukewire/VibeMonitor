@@ -175,4 +175,4 @@ Thresholds live in `config.toml` under `[thresholds]`.
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Copyright (c) 2026 Nukewire.
+MIT — see [LICENSE](LICENSE). Copyright (c) 2026
