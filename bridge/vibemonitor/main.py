@@ -32,11 +32,15 @@ def _session_loop(store: Store, cfg, stop: threading.Event,
         stop.wait(cfg.poll_sessions_sec)
 
 
-def _usage_loop(cache: UsageCache, cfg, claude_token: str | None,
-                stop: threading.Event) -> None:
+def _usage_loop(cache: UsageCache, cfg, stop: threading.Event) -> None:
     while not stop.is_set():
         now = time.time()
         try:
+            # Re-resolve the token every poll: the config value wins, otherwise the
+            # local Claude OAuth token is auto-read fresh. Claude Code rotates the
+            # access token every few hours, so capturing it once at startup would
+            # leave the usage gauge stuck on a stale (expired) token -> ok:false.
+            claude_token = cfg.claude_oauth_token or read_claude_oauth_token()
             cache.set({
                 "claude": claude_usage(claude_token, now=now) if cfg.enable_claude
                           else {"ok": False},
@@ -55,10 +59,10 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     cfg = load_config(cfg_path)
 
-    # Config value wins; otherwise auto-read the local Claude OAuth token so the
-    # usage gauge works without the user pasting a token into config.toml.
-    claude_token = cfg.claude_oauth_token or read_claude_oauth_token()
-    if cfg.enable_claude and not claude_token:
+    # The usage loop re-reads the Claude OAuth token each poll (see _usage_loop);
+    # this startup check just warns once if neither a config override nor a local
+    # credentials token is available.
+    if cfg.enable_claude and not (cfg.claude_oauth_token or read_claude_oauth_token()):
         print("note: no Claude OAuth token found; usage gauge will show '--'", file=sys.stderr)
 
     store = Store()
@@ -68,7 +72,7 @@ def main(argv: list[str] | None = None) -> int:
 
     threading.Thread(target=_session_loop, args=(store, cfg, stop, heartbeat),
                      daemon=True).start()
-    threading.Thread(target=_usage_loop, args=(cache, cfg, claude_token, stop),
+    threading.Thread(target=_usage_loop, args=(cache, cfg, stop),
                      daemon=True).start()
 
     app = create_app(store, cfg, usage_provider=cache.get, heartbeat=heartbeat)
