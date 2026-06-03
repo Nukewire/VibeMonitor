@@ -7,11 +7,17 @@
 #include "net.h"
 #include "ui.h"
 #include "provisioning.h"
+#include "settings.h"
+#include "display.h"
 
 static Provision prov;
 static StateModel state;
 static uint32_t last_poll = 0;
 static uint32_t last_tick = 0;
+
+// ---- display sleep (backlight blanking) ----
+static uint32_t last_activity = 0;   // millis() of last touch / waiting session
+static bool     sleeping      = false;
 
 static void on_ack(const char* id) {
     net_ack(id);
@@ -22,11 +28,11 @@ static void on_ack(const char* id) {
 // even if we're about to block (provisioning / WiFi connect).
 static void show_message(const char* msg) {
     lv_obj_clean(lv_scr_act());
-    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(C_BG), 0);
+    lv_obj_set_style_bg_color(lv_scr_act(), lv_color_hex(theme_current().bg), 0);
     lv_obj_t* l = lv_label_create(lv_scr_act());
     lv_label_set_long_mode(l, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(l, SCREEN_W - 24);
-    lv_obj_set_style_text_color(l, lv_color_hex(C_FG), 0);
+    lv_obj_set_style_text_color(l, lv_color_hex(theme_current().fg), 0);
     lv_label_set_text(l, msg);
     lv_obj_align(l, LV_ALIGN_CENTER, 0, 0);
     for (int i = 0; i < 25; i++) { lv_timer_handler(); delay(10); }
@@ -38,6 +44,13 @@ void setup() {
     Serial.println("[VibeMonitor] boot");
 
     display_init();
+
+    // load persisted settings + bring the backlight up via LEDC PWM at the
+    // saved brightness (theme is selected inside settings_load()).
+    settings_load();
+    backlight_init();
+    backlight_set(settings_brightness());
+
     last_tick = millis();
 
     pinMode(BTN_BOOT, INPUT_PULLUP);
@@ -73,8 +86,10 @@ void setup() {
     Serial.printf("[VibeMonitor] hub %s:%u\n", prov.host, prov.port);
 
     ui_init();
+    ui_apply_theme();              // ensure widgets match the loaded theme
     ui_set_ack_cb(on_ack);
     last_tick = millis();
+    last_activity = millis();
 }
 
 void loop() {
@@ -84,6 +99,35 @@ void loop() {
     uint32_t now = millis();
     lv_tick_inc(now - last_tick);
     last_tick = now;
+
+    // ---- display sleep / wake ------------------------------------------
+    // Peek the raw touch panel (independent of LVGL's indev) so we can wake
+    // the screen and swallow the touch that woke it.
+    {
+        int16_t tx, ty;
+        bool touched = touch_pressed(&tx, &ty);
+        if (touched) {
+            last_activity = now;
+            if (sleeping) {
+                // wake: restore brightness, swallow this touch (and the rest of
+                // the press) so it doesn't trigger a UI action.
+                sleeping = false;
+                backlight_set(settings_brightness());
+                lv_timer_handler();   // keep LVGL fed, but skip acting below
+                delay(5);
+                return;
+            }
+        }
+
+        uint16_t sleep_min = settings_sleep_min();
+        if (!sleeping && sleep_min > 0) {
+            uint32_t sleep_ms = (uint32_t)sleep_min * 60UL * 1000UL;
+            if (now - last_activity >= sleep_ms) {
+                sleeping = true;
+                backlight_set(0);     // backlight off
+            }
+        }
+    }
 
     if (now - last_poll >= POLL_MS) {
         last_poll = now;
@@ -98,6 +142,20 @@ void loop() {
             fail_streak = 0;
             ui_set_offline(false);
             ui_update(&state);
+
+            // any waiting session counts as activity: never sleep while a
+            // session is awaiting input, and wake if we'd dozed off.
+            bool any_waiting = false;
+            for (uint8_t i = 0; i < state.count; i++) {
+                if (state.sessions[i].status == ST_WAITING) { any_waiting = true; break; }
+            }
+            if (any_waiting) {
+                last_activity = now;
+                if (sleeping) {
+                    sleeping = false;
+                    backlight_set(settings_brightness());
+                }
+            }
         } else {
             if (fail_streak < 255) fail_streak++;
             if (fail_streak >= OFFLINE_AFTER) ui_set_offline(true);

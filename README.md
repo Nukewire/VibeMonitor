@@ -21,6 +21,9 @@ VibeMonitor turns a ~$15 ESP32 touchscreen into an ambient status panel for your
 - **Usage gauges** — your Claude usage % and reset countdown (plus Codex when available), so you can see how much headroom is left before a rate-limit window resets.
 - **Live session list** — every active Claude Code and Codex session with a calm status symbol: **working** (actively running), **idle** (alive but quiet), or **waiting** (needs your input). Waiting sessions sort to the top and flash.
 - **Tap-to-dismiss alerts** — when a session is waiting on you, its row flashes. Tap it to acknowledge and clear the highlight. No beeps, no LEDs — it's deliberately quiet.
+- **AI session summaries** *(optional)* — a one-line "what they're working on" per session (e.g. *"Refactor auth middleware"*), generated from the latest prompt by a cheap model via [OpenRouter](https://openrouter.ai). Opt-in. See [Session summaries](#session-summaries-optional).
+- **Web dashboard** — the bridge also serves the same view in a browser at `http://<bridge-host>:5151/`, so you can glance at it without the hardware. See [Web dashboard](#web-dashboard).
+- **On-device settings** — tap the **SETTINGS** tab to adjust screen **brightness**, switch **light/dark theme**, and set a **sleep** timeout (blank the display after N minutes with nothing waiting; tap to wake). Saved on the device.
 
 ## Architecture
 
@@ -96,6 +99,39 @@ cd bridge
 python -m pytest -q
 ```
 
+## Web dashboard
+
+The bridge serves a browser version of the display at **`http://<bridge-host>:5151/`** — the
+same waiting-first session list and usage gauges, no hardware required. The page asks for your
+token once (the same value as `config.toml`) and stores it locally in your browser; it never
+travels in the URL. It polls `/state` every couple of seconds, shows per-session summaries when
+enabled, flags the bridge as offline/stalled if it stops responding, and lets you click a waiting
+row to acknowledge it — exactly like tapping the device.
+
+## Session summaries (optional)
+
+VibeMonitor can show a short *"what they're working on"* line under each session (e.g.
+*"Refactor auth middleware"*). The bridge reads the **latest prompt** from the session log and
+asks a cheap model — via [OpenRouter](https://openrouter.ai) — for a 3–6 word description. It only
+calls the model when a session's prompt changes, so cost stays minimal, and it degrades silently
+(no summary shown) if the model is unavailable or rate-limited.
+
+Enable it in `config.toml`:
+
+```toml
+[summary]
+enabled = true
+model   = "google/gemma-4-31b-it:free"   # any OpenRouter model id; :free models cost nothing
+
+[openrouter]
+api_key = "sk-or-v1-..."                  # from https://openrouter.ai/keys
+```
+
+> **Privacy:** with summaries enabled, the latest prompt text of each active session is sent to
+> OpenRouter (and its upstream model provider). It's **off by default** for that reason. Your
+> OpenRouter key lives only in `config.toml`, which is gitignored. Everything else about
+> VibeMonitor stays local.
+
 ## Firmware setup (ESP32 CYD)
 
 Requires [PlatformIO](https://platformio.org/) (the CLI or the VS Code extension).
@@ -137,7 +173,7 @@ A few extra notes:
 
 ## Data contract
 
-All three endpoints require the header `X-VibeMonitor-Token: <token>` (a missing or wrong token returns `401`). The hub binds to the LAN; the token is the only gate, which is appropriate for a desk toy on a trusted network. No provider secrets are ever sent to the device — they stay on the PC.
+The data endpoints (`/state`, `/ack`, `/hook`) require the header `X-VibeMonitor-Token: <token>` (a missing or wrong token returns `401`). The dashboard shell at `GET /` is unauthenticated (it carries no data; its JS supplies the token when it fetches `/state`). The hub binds to the LAN; the token is the only gate, which is appropriate for a desk toy on a trusted network. No provider secrets are ever sent to the device — they stay on the PC.
 
 ### `GET /state`
 
@@ -152,7 +188,8 @@ Returns the current usage and the deduped, waiting-first session list (sessions 
   },
   "sessions": [
     { "id": "c21ef32d", "tool": "claude", "project": "WebApp",
-      "status": "waiting", "ageSec": 3, "waiting": true, "count": 1 }
+      "status": "waiting", "ageSec": 3, "waiting": true, "count": 1,
+      "summary": "Refactor auth middleware" }
   ],
   "staleSec": 2
 }

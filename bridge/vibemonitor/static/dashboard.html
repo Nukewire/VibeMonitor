@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>VibeMonitor</title>
+<style>
+  :root{
+    --bg:#141414; --panel:#2B2B2B; --text:#EDEDED; --dim:#8A8A8A;
+    --claude:#D97757; --codex:#A78BFA; --waiting:#F5A623; --working:#4ADE80;
+    --idle:#8A8A8A; --accent:#D97757; --critical:#E5484D;
+    --radius:16px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--text); min-height:100vh;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif,
+      "Apple Color Emoji","Segoe UI Emoji";
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+    line-height:1.4; letter-spacing:.1px;
+    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  .wrap{max-width:720px; margin:0 auto; padding:22px 18px 64px}
+
+  /* ---- top banners ---- */
+  #banner{
+    display:none; margin:0 0 16px; padding:10px 14px; border-radius:12px;
+    background:rgba(229,72,77,.14); color:#F6A6A8; font-size:13.5px; font-weight:600;
+    text-align:center;
+  }
+  #banner.show{display:block}
+  #stalehint{
+    display:none; margin:0 0 16px; padding:9px 14px; border-radius:12px;
+    background:rgba(245,166,35,.13); color:#F5C26B; font-size:13px; font-weight:600;
+    text-align:center;
+  }
+  #stalehint.show{display:block}
+
+  /* ---- usage gauges ---- */
+  .usage{
+    display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:24px;
+  }
+  .gauge{
+    background:var(--panel); border-radius:var(--radius); padding:16px 18px;
+    box-shadow:0 1px 0 rgba(255,255,255,.02) inset;
+  }
+  .gauge .ghead{display:flex; align-items:baseline; justify-content:space-between; gap:8px}
+  .gauge .glabel{font-size:12.5px; font-weight:700; letter-spacing:.4px; text-transform:uppercase}
+  .gauge.claude .glabel{color:var(--claude)}
+  .gauge.codex  .glabel{color:var(--codex)}
+  .gauge .gweek{font-size:11px; color:var(--dim); font-weight:600}
+  .gauge .gpct{font-size:34px; font-weight:700; margin:8px 0 10px; line-height:1; font-variant-numeric:tabular-nums}
+  .gauge .gpct.dim{color:var(--dim); font-weight:600}
+  .bar{height:6px; border-radius:99px; background:rgba(255,255,255,.07); overflow:hidden}
+  .bar > i{display:block; height:100%; width:0%; border-radius:99px; transition:width .6s ease}
+  .gauge.claude .bar > i{background:var(--claude)}
+  .gauge.codex  .bar > i{background:var(--codex)}
+  .gauge .greset{margin-top:10px; font-size:11.5px; color:var(--dim); font-weight:600}
+
+  /* ---- sessions ---- */
+  .seclabel{
+    font-size:11px; font-weight:700; letter-spacing:1.2px; text-transform:uppercase;
+    color:var(--dim); margin:0 4px 12px;
+  }
+  .sessions{display:flex; flex-direction:column; gap:10px}
+  .empty{
+    background:var(--panel); border-radius:var(--radius); padding:26px;
+    text-align:center; color:var(--dim); font-size:14px;
+  }
+  .card{
+    background:var(--panel); border-radius:var(--radius);
+    padding:14px 16px; display:flex; align-items:flex-start; gap:13px;
+    border-left:3px solid transparent; transition:transform .12s ease, background .2s ease;
+  }
+  .card.wait{
+    border-left-color:var(--waiting);
+    background:linear-gradient(90deg, rgba(245,166,35,.10), rgba(245,166,35,0) 55%), var(--panel);
+    cursor:pointer; animation:pulse 2.4s ease-in-out infinite;
+  }
+  .card.wait:active{transform:scale(.99)}
+  @keyframes pulse{
+    0%,100%{box-shadow:0 0 0 0 rgba(245,166,35,.0)}
+    50%{box-shadow:0 0 0 4px rgba(245,166,35,.10)}
+  }
+  @media (prefers-reduced-motion: reduce){ .card.wait{animation:none} }
+  .dot{flex:0 0 auto; width:10px; height:10px; border-radius:99px; margin-top:5px}
+  .dot.claude{background:var(--claude)}
+  .dot.codex{background:var(--codex)}
+  .cbody{flex:1 1 auto; min-width:0}
+  .crow{display:flex; align-items:center; gap:10px; flex-wrap:wrap}
+  .proj{font-size:15.5px; font-weight:700; color:var(--text); word-break:break-word}
+  .age{margin-left:auto; font-size:12px; color:var(--dim); font-variant-numeric:tabular-nums; flex:0 0 auto}
+  .pill{
+    font-size:10.5px; font-weight:700; letter-spacing:.5px; text-transform:uppercase;
+    padding:3px 9px; border-radius:99px;
+  }
+  .pill.waiting{color:var(--waiting); background:rgba(245,166,35,.16)}
+  .pill.working{color:var(--working); background:rgba(74,222,128,.14)}
+  .pill.idle{color:var(--idle); background:rgba(138,138,138,.16)}
+  .summary{margin-top:6px; font-size:13px; color:var(--dim); line-height:1.45; word-break:break-word}
+
+  /* ---- footer ---- */
+  footer{
+    margin-top:26px; display:flex; justify-content:space-between; gap:12px;
+    color:var(--dim); font-size:12px; padding:0 4px; flex-wrap:wrap;
+  }
+  footer .counts{font-weight:600}
+
+  /* ---- connect overlay ---- */
+  #overlay{
+    position:fixed; inset:0; display:none; align-items:center; justify-content:center;
+    background:rgba(10,10,10,.72); backdrop-filter:blur(6px); z-index:50; padding:24px;
+  }
+  #overlay.show{display:flex}
+  .gate{
+    background:var(--panel); border-radius:20px; padding:28px 26px; width:100%; max-width:340px;
+    text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.5);
+  }
+  .gate h1{margin:0 0 6px; font-size:20px; letter-spacing:.5px}
+  .gate p{margin:0 0 20px; color:var(--dim); font-size:13px}
+  .gate input{
+    width:100%; padding:12px 14px; border-radius:12px; border:none; outline:none;
+    background:#1c1c1c; color:var(--text); font-size:15px; margin-bottom:12px;
+  }
+  .gate input:focus{box-shadow:0 0 0 2px var(--accent)}
+  .gate button{
+    width:100%; padding:12px 14px; border-radius:12px; border:none; cursor:pointer;
+    background:var(--accent); color:#1a0f0a; font-size:15px; font-weight:700; letter-spacing:.3px;
+  }
+  .gate button:active{transform:scale(.99)}
+  .gate .err{display:none; color:var(--critical); font-size:12.5px; margin-top:10px; font-weight:600}
+  .gate .err.show{display:block}
+
+  .brand{
+    display:flex; align-items:center; gap:9px; margin:0 4px 20px;
+  }
+  .brand .glow{width:9px; height:9px; border-radius:99px; background:var(--working);
+    box-shadow:0 0 10px var(--working);}
+  .brand .glow.off{background:var(--critical); box-shadow:0 0 10px var(--critical)}
+  .brand h2{margin:0; font-size:15px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase}
+  .brand .sub{color:var(--dim); font-size:11px; margin-left:auto; font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="brand">
+      <span class="glow" id="livedot"></span>
+      <h2>VibeMonitor</h2>
+      <span class="sub" id="hbsub"></span>
+    </div>
+
+    <div id="banner">connection lost — bridge offline. showing last known state.</div>
+    <div id="stalehint">bridge stalled — last scan was a while ago.</div>
+
+    <div class="usage">
+      <div class="gauge claude" id="g-claude">
+        <div class="ghead"><span class="glabel">Claude</span><span class="gweek"></span></div>
+        <div class="gpct">--</div>
+        <div class="bar"><i></i></div>
+        <div class="greset"></div>
+      </div>
+      <div class="gauge codex" id="g-codex">
+        <div class="ghead"><span class="glabel">Codex</span><span class="gweek"></span></div>
+        <div class="gpct">--</div>
+        <div class="bar"><i></i></div>
+        <div class="greset"></div>
+      </div>
+    </div>
+
+    <div class="seclabel">Sessions</div>
+    <div class="sessions" id="sessions">
+      <div class="empty">waiting for the bridge…</div>
+    </div>
+
+    <footer>
+      <span id="updated">—</span>
+      <span class="counts" id="counts"></span>
+    </footer>
+  </div>
+
+  <div id="overlay">
+    <form class="gate" id="gate">
+      <h1>VibeMonitor</h1>
+      <p>Enter the bridge token to connect.</p>
+      <input id="tok" type="password" autocomplete="current-password" placeholder="Token" inputmode="text">
+      <button type="submit">Connect</button>
+      <div class="err" id="gateErr">Invalid token. Try again.</div>
+    </form>
+  </div>
+
+<script>
+(function(){
+  "use strict";
+  var KEY = "vibemonitor_token";
+  var POLL_MS = 2000;
+  var STALE_LIMIT = 12;
+
+  var $ = function(id){ return document.getElementById(id); };
+  var overlay = $("overlay"), gate = $("gate"), tokInput = $("tok"), gateErr = $("gateErr");
+  var banner = $("banner"), stalehint = $("stalehint");
+  var sessionsEl = $("sessions"), updatedEl = $("updated"), countsEl = $("counts");
+  var livedot = $("livedot"), hbsub = $("hbsub");
+
+  var token = null;
+  var timer = null;
+  var hasGoodData = false;
+
+  function getToken(){ try { return localStorage.getItem(KEY); } catch(e){ return null; } }
+  function setToken(t){ try { localStorage.setItem(KEY, t); } catch(e){} }
+  function clearToken(){ try { localStorage.removeItem(KEY); } catch(e){} }
+
+  // ---- formatters ----
+  function fmtAge(sec){
+    sec = Math.max(0, Math.floor(sec || 0));
+    if (sec < 60) return sec + "s";
+    if (sec < 3600) return Math.floor(sec/60) + "m";
+    if (sec < 86400) return Math.floor(sec/3600) + "h";
+    return Math.floor(sec/86400) + "d";
+  }
+  function fmtReset(sec){
+    if (sec == null || sec < 0) return "";
+    sec = Math.floor(sec);
+    if (sec < 60) return "resets <1m";
+    var h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60);
+    if (h > 0) return "resets " + h + "h " + m + "m";
+    return "resets " + m + "m";
+  }
+  function fmtClock(ts){
+    var d = ts ? new Date(ts*1000) : new Date();
+    var hh = d.getHours(), mm = d.getMinutes(), ss = d.getSeconds();
+    function p(n){ return (n<10?"0":"") + n; }
+    return p(hh) + ":" + p(mm) + ":" + p(ss);
+  }
+
+  // ---- rendering ----
+  function renderGauge(id, u){
+    var box = $(id);
+    var pctEl = box.querySelector(".gpct");
+    var fill = box.querySelector(".bar > i");
+    var weekEl = box.querySelector(".gweek");
+    var resetEl = box.querySelector(".greset");
+    u = u || {};
+    if (!u.ok || u.pct == null){
+      pctEl.textContent = "--";
+      pctEl.classList.add("dim");
+      fill.style.width = "0%";
+      weekEl.textContent = "";
+      resetEl.textContent = "unavailable";
+      return;
+    }
+    var pct = Math.max(0, Math.min(1, u.pct));
+    pctEl.textContent = Math.round(pct*100) + "%";
+    pctEl.classList.remove("dim");
+    fill.style.width = (pct*100).toFixed(1) + "%";
+    weekEl.textContent = (u.weekPct != null) ? ("wk " + Math.round(u.weekPct*100) + "%") : "";
+    resetEl.textContent = fmtReset(u.resetSec);
+  }
+
+  function renderSessions(list){
+    sessionsEl.textContent = "";
+    if (!list || !list.length){
+      var e = document.createElement("div");
+      e.className = "empty";
+      e.textContent = "No active sessions.";
+      sessionsEl.appendChild(e);
+      return;
+    }
+    list.forEach(function(s){
+      var status = s.status || "idle";
+      var isWait = status === "waiting";
+      var card = document.createElement("div");
+      card.className = "card" + (isWait ? " wait" : "");
+
+      var dot = document.createElement("span");
+      dot.className = "dot " + (s.tool === "codex" ? "codex" : "claude");
+      card.appendChild(dot);
+
+      var body = document.createElement("div");
+      body.className = "cbody";
+
+      var row = document.createElement("div");
+      row.className = "crow";
+
+      var proj = document.createElement("span");
+      proj.className = "proj";
+      proj.textContent = s.project || "(unknown)";   // escaped via textContent
+      row.appendChild(proj);
+
+      var pill = document.createElement("span");
+      pill.className = "pill " + status;
+      pill.textContent = status;
+      row.appendChild(pill);
+
+      var age = document.createElement("span");
+      age.className = "age";
+      age.textContent = fmtAge(s.ageSec);
+      row.appendChild(age);
+
+      body.appendChild(row);
+
+      if (s.summary){
+        var sum = document.createElement("div");
+        sum.className = "summary";
+        sum.textContent = s.summary;                 // escaped via textContent
+        body.appendChild(sum);
+      }
+
+      card.appendChild(body);
+
+      if (isWait){
+        card.addEventListener("click", function(){ ackSession(s.id); });
+      }
+      sessionsEl.appendChild(card);
+    });
+  }
+
+  function renderFooter(data){
+    updatedEl.textContent = "updated " + fmtClock(data.ts);
+    var working = 0, waiting = 0;
+    (data.sessions || []).forEach(function(s){
+      if (s.status === "working") working++;
+      else if (s.status === "waiting") waiting++;
+    });
+    countsEl.textContent = working + " working · " + waiting + " waiting";
+  }
+
+  function render(data){
+    var usage = data.usage || {};
+    renderGauge("g-claude", usage.claude);
+    renderGauge("g-codex", usage.codex);
+    renderSessions(data.sessions);
+    renderFooter(data);
+
+    var stale = (typeof data.staleSec === "number") ? data.staleSec : -1;
+    stalehint.classList.toggle("show", stale > STALE_LIMIT);
+    if (stale >= 0){
+      hbsub.textContent = "scanned " + fmtAge(stale) + " ago";
+    } else {
+      hbsub.textContent = "no scan yet";
+    }
+  }
+
+  // ---- networking ----
+  function setOffline(off){
+    banner.classList.toggle("show", off);
+    livedot.classList.toggle("off", off);
+  }
+
+  function poll(){
+    if (!token) return;
+    fetch("/state", { headers: { "X-VibeMonitor-Token": token } })
+      .then(function(res){
+        if (res.status === 401){
+          var err = new Error("unauthorized"); err.code = 401; throw err;
+        }
+        if (!res.ok){
+          var e2 = new Error("bad status " + res.status); e2.code = res.status; throw e2;
+        }
+        return res.json();
+      })
+      .then(function(data){
+        hasGoodData = true;
+        setOffline(false);
+        render(data);
+      })
+      .catch(function(err){
+        if (err && err.code === 401){
+          stopPolling();
+          clearToken();
+          token = null;
+          showOverlay(true);
+          return;
+        }
+        // network error / non-200 -> keep last good data, show offline
+        setOffline(true);
+        if (!hasGoodData){
+          updatedEl.textContent = "—";
+        }
+      });
+  }
+
+  function ackSession(id){
+    if (!token || !id) return;
+    fetch("/ack", {
+      method: "POST",
+      headers: { "X-VibeMonitor-Token": token, "Content-Type": "application/json" },
+      body: JSON.stringify({ id: id })
+    }).then(function(){ poll(); }).catch(function(){ /* offline handled by poll */ });
+  }
+
+  function startPolling(){
+    stopPolling();
+    poll();
+    timer = setInterval(poll, POLL_MS);
+  }
+  function stopPolling(){
+    if (timer){ clearInterval(timer); timer = null; }
+  }
+
+  // ---- overlay / gate ----
+  function showOverlay(asError){
+    overlay.classList.add("show");
+    gateErr.classList.toggle("show", !!asError);
+    tokInput.value = "";
+    setTimeout(function(){ tokInput.focus(); }, 50);
+  }
+  function hideOverlay(){
+    overlay.classList.remove("show");
+    gateErr.classList.remove("show");
+  }
+
+  gate.addEventListener("submit", function(ev){
+    ev.preventDefault();
+    var t = tokInput.value.trim();
+    if (!t) return;
+    token = t;
+    setToken(t);
+    hideOverlay();
+    startPolling();
+  });
+
+  // ---- boot ----
+  token = getToken();
+  if (token){
+    startPolling();
+  } else {
+    showOverlay(false);
+  }
+})();
+</script>
+</body>
+</html>

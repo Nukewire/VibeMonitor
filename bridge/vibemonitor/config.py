@@ -17,6 +17,11 @@ class Config:
     claude_oauth_token: str | None = None
     enable_claude: bool = True
     enable_codex: bool = True
+    summary_enabled: bool = False
+    summary_model: str = "google/gemma-4-31b-it:free"
+    summary_max_chars: int = 2000
+    openrouter_api_key: str | None = None
+    poll_summary_sec: float = 15.0
 
 
 def load_config(path: str | Path) -> Config:
@@ -28,6 +33,8 @@ def load_config(path: str | Path) -> Config:
     poll = data.get("poll", {})
     claude = data.get("claude", {})
     providers = data.get("providers", {})
+    summary = data.get("summary", {})
+    openrouter = data.get("openrouter", {})
     return Config(
         token=token,
         port=int(data.get("port", 8787)),
@@ -40,4 +47,9 @@ def load_config(path: str | Path) -> Config:
         claude_oauth_token=claude.get("oauth_token"),
         enable_claude=bool(providers.get("claude", True)),
         enable_codex=bool(providers.get("codex", True)),
+        summary_enabled=bool(summary.get("enabled", False)),
+        summary_model=str(summary.get("model", "google/gemma-4-31b-it:free")),
+        summary_max_chars=int(summary.get("max_chars", 2000)),
+        openrouter_api_key=openrouter.get("api_key"),
+        poll_summary_sec=float(poll.get("summary_sec", 15.0)),
     )

@@ -7,11 +7,28 @@ CFG = Config(token="secret", working_sec=10, waiting_ttl_sec=1800, gone_ttl_sec=
 H = {"X-VibeMonitor-Token": "secret"}
 
 
-def make_client(store, usage=None):
+def make_client(store, usage=None, summary_provider=None):
     app = create_app(store, CFG, usage_provider=lambda: (usage or {"claude": {}, "codex": {}}),
-                     clock=lambda: 1005.0)
+                     clock=lambda: 1005.0, summary_provider=summary_provider)
     app.testing = True
     return app.test_client()
+
+
+def test_state_includes_summary_when_provider_set():
+    st = Store()
+    st.upsert(Session(id="a", tool="claude", project="P", last_activity=1000.0))
+    c = make_client(st, summary_provider=lambda sid: "Fixing the parser" if sid == "a" else None)
+    body = c.get("/state", headers=H).get_json()
+    row = next(s for s in body["sessions"] if s["project"] == "P")
+    assert row["summary"] == "Fixing the parser"
+
+
+def test_state_summary_absent_without_provider():
+    st = Store()
+    st.upsert(Session(id="a", tool="claude", project="P", last_activity=1000.0))
+    body = make_client(st).get("/state", headers=H).get_json()
+    row = next(s for s in body["sessions"] if s["project"] == "P")
+    assert "summary" not in row          # no provider -> field omitted, contract unchanged
 
 
 def test_state_requires_token():

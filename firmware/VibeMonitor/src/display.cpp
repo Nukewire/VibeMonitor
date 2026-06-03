@@ -48,9 +48,8 @@ static void touch_read_cb(lv_indev_drv_t* drv, lv_indev_data_t* data) {
 }
 
 void display_init() {
-    pinMode(TFT_BL, OUTPUT);
-    digitalWrite(TFT_BL, HIGH);
-
+    // NOTE: backlight is driven by LEDC PWM (see settings.cpp backlight_init()),
+    // not a plain digital HIGH — so we deliberately do NOT touch TFT_BL here.
     tft.init();
     tft.setRotation(SCREEN_ROT);
     tft.fillScreen(TFT_BLACK);

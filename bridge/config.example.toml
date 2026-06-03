@@ -28,3 +28,17 @@ codex  = true
 # bridge auto-reads it from ~/.claude/.credentials.json, so you usually leave this
 # unset. Set it only to override the auto-detected value.
 # oauth_token = "..."
+
+[summary]
+# Optional: AI one-line summaries of what each session is working on, shown on the
+# device row and the web dashboard. The bridge reads the latest user prompt from the
+# session log and asks a cheap model (via OpenRouter) for a 3-6 word description.
+# Off by default — the prompt text is sent to a third party (OpenRouter), so opt in.
+enabled = false
+model = "google/gemma-4-31b-it:free"   # any OpenRouter model id; :free models cost nothing (but can rate-limit)
+max_chars = 2000                                   # cap the prompt text sent to the model
+
+[openrouter]
+# Your OpenRouter API key (https://openrouter.ai/keys). Required only when
+# [summary] enabled = true. Keep this out of version control.
+# api_key = "sk-or-v1-..."

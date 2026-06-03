@@ -1,10 +1,13 @@
 from __future__ import annotations
 import time
 from functools import wraps
-from flask import Flask, jsonify, request
+from pathlib import Path
+from flask import Flask, jsonify, request, Response
 from vibemonitor.config import Config
 from vibemonitor.model import Store
 from vibemonitor.statemachine import derive_status, apply_hook_event, GONE
+
+_STATIC_DIR = Path(__file__).parent / "static"
 
 # status sort order: waiting first, then working, then idle
 _ORDER = {"waiting": 0, "working": 1, "idle": 2}
@@ -48,7 +51,7 @@ def _dedupe_and_filter(rows: list[dict]) -> list[dict]:
 
 
 def create_app(store: Store, cfg: Config, usage_provider=None, clock=time.time,
-               heartbeat=None) -> Flask:
+               heartbeat=None, summary_provider=None) -> Flask:
     app = Flask(__name__)
 
     def require_token(fn):
@@ -58,6 +61,15 @@ def create_app(store: Store, cfg: Config, usage_provider=None, clock=time.time,
                 return jsonify({"error": "unauthorized"}), 401
             return fn(*a, **k)
         return wrapper
+
+    @app.get("/")
+    def dashboard():
+        # The dashboard shell is served WITHOUT a token (it carries no data); its JS
+        # fetches /state with the token from localStorage. Keeps secret out of the URL.
+        html = _STATIC_DIR / "dashboard.html"
+        if not html.exists():
+            return Response("dashboard.html not found", status=404, mimetype="text/plain")
+        return Response(html.read_text(encoding="utf-8"), mimetype="text/html")
 
     @app.get("/state")
     @require_token
@@ -74,6 +86,9 @@ def create_app(store: Store, cfg: Config, usage_provider=None, clock=time.time,
                 "waiting": status == "waiting",
             })
         out = _dedupe_and_filter(out)
+        if summary_provider:
+            for r in out:                       # rep id carries the group's summary
+                r["summary"] = summary_provider(r["id"])
         out.sort(key=lambda x: (_ORDER.get(x["status"], 9), x["ageSec"], x["tool"], x["project"]))
         usage = usage_provider() if usage_provider else {"claude": {}, "codex": {}}
         last_scan = (heartbeat or {}).get("last_scan", 0.0)
