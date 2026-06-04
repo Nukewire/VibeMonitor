@@ -36,3 +36,10 @@ def test_dashboard_needs_no_token():
 def test_state_still_requires_token():
     # guards the contract: the data API must stay token-gated
     assert make_client(Store()).get("/state").status_code == 401
+
+
+def test_dashboard_wires_analytics_view():
+    body = make_client(Store()).get("/").get_data(as_text=True)
+    # proves the Analytics view toggle + its /analytics fetch are present in the shell
+    assert "/analytics" in body
+    assert "Analytics" in body

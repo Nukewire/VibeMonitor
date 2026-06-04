@@ -13,6 +13,7 @@
 #define LV_DISP_DEF_REFR_PERIOD 30
 #define LV_TICK_CUSTOM        0          /* we call lv_tick_inc() in loop() */
 
+#define LV_FONT_MONTSERRAT_12 1
 #define LV_FONT_MONTSERRAT_14 1
 #define LV_FONT_MONTSERRAT_16 1
 #define LV_FONT_DEFAULT       &lv_font_montserrat_14

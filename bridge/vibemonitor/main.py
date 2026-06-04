@@ -15,6 +15,34 @@ from vibemonitor.statemachine import derive_status, is_junk_project
 from vibemonitor.summarizer import extract_latest_prompt, summarize
 from vibemonitor.summarycache import SummaryCache, hash_text
 from vibemonitor.notifier import WebhookNotifier
+from vibemonitor.usagehistory import UsageHistory
+from vibemonitor.analyticscache import AnalyticsCache
+from vibemonitor.usageanalytics import build_provider, daily_history
+
+_HISTORY_RETENTION_SEC = 90 * 86400        # keep ~90 days of usage samples
+_SPARK_WINDOW_SEC = 5 * 3600               # samples shown in the sparkline / used for burn
+_DAILY_WINDOW_SEC = 14 * 86400             # span for the per-day history
+
+
+def _downsample(samples: list[dict], n: int = 80) -> list[dict]:
+    """Thin a sample list to at most n points (keep ts+pct) for a compact sparkline."""
+    if len(samples) <= n:
+        return [{"ts": s["ts"], "pct": s["pct"]} for s in samples]
+    step = len(samples) / n
+    return [{"ts": samples[int(i * step)]["ts"], "pct": samples[int(i * step)]["pct"]}
+            for i in range(n)]
+
+
+def _build_analytics(history: UsageHistory, usage: dict, now: float) -> dict:
+    bundle: dict = {"ts": int(now)}
+    for provider in ("claude", "codex"):
+        recent = history.samples(provider, since_ts=now - _SPARK_WINDOW_SEC)
+        wide = history.samples(provider, since_ts=now - _DAILY_WINDOW_SEC)
+        prov = build_provider(recent, usage.get(provider) or {}, now)
+        prov["samples"] = _downsample(recent)
+        prov["daily"] = daily_history(wide)
+        bundle[provider] = prov
+    return bundle
 
 
 def _waiting_groups(store: Store, cfg, now: float,
@@ -52,7 +80,9 @@ def _session_loop(store: Store, cfg, stop: threading.Event,
         stop.wait(cfg.poll_sessions_sec)
 
 
-def _usage_loop(cache: UsageCache, cfg, stop: threading.Event) -> None:
+def _usage_loop(cache: UsageCache, cfg, stop: threading.Event,
+                history: UsageHistory | None = None,
+                analytics: AnalyticsCache | None = None) -> None:
     while not stop.is_set():
         now = time.time()
         try:
@@ -61,11 +91,17 @@ def _usage_loop(cache: UsageCache, cfg, stop: threading.Event) -> None:
             # access token every few hours, so capturing it once at startup would
             # leave the usage gauge stuck on a stale (expired) token -> ok:false.
             claude_token = cfg.claude_oauth_token or read_claude_oauth_token()
-            cache.set({
+            usage = {
                 "claude": claude_usage(claude_token, now=now) if cfg.enable_claude
                           else {"ok": False},
                 "codex": codex_usage(now=now) if cfg.enable_codex else {"ok": False},
-            })
+            }
+            cache.set(usage)
+            if history is not None:
+                history.record(now, usage)
+                history.prune(now - _HISTORY_RETENTION_SEC)
+                if analytics is not None:
+                    analytics.set(_build_analytics(history, usage, now))
         except Exception as e:
             print(f"[usage_loop] error (continuing): {e!r}", file=sys.stderr)
         stop.wait(cfg.poll_usage_sec)
@@ -123,6 +159,8 @@ def main(argv: list[str] | None = None) -> int:
     store = Store()
     cache = UsageCache()
     summaries = SummaryCache()
+    history = UsageHistory(str(cfg_path.parent / "usage_history.db"))
+    analytics = AnalyticsCache()
     notifier = WebhookNotifier(cfg.ha_webhook_url) if cfg.ha_webhook_url else None
     if notifier:
         print(f"Home Assistant webhook enabled -> {cfg.ha_webhook_url}", file=sys.stderr)
@@ -132,7 +170,7 @@ def main(argv: list[str] | None = None) -> int:
     threading.Thread(target=_session_loop,
                      args=(store, cfg, stop, heartbeat, notifier, summaries),
                      daemon=True).start()
-    threading.Thread(target=_usage_loop, args=(cache, cfg, stop),
+    threading.Thread(target=_usage_loop, args=(cache, cfg, stop, history, analytics),
                      daemon=True).start()
     if cfg.summary_enabled:
         if cfg.openrouter_api_key:
@@ -143,7 +181,7 @@ def main(argv: list[str] | None = None) -> int:
                   file=sys.stderr)
 
     app = create_app(store, cfg, usage_provider=cache.get, heartbeat=heartbeat,
-                     summary_provider=summaries.get)
+                     summary_provider=summaries.get, analytics_provider=analytics.get)
     print(f"VibeMonitor hub on http://{cfg.host}:{cfg.port}  (Ctrl+C to stop)")
     try:
         app.run(host=cfg.host, port=cfg.port, threaded=True)

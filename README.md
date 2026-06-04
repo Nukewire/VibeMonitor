@@ -107,7 +107,30 @@ same waiting-first session list and usage gauges, no hardware required. The page
 token once (the same value as `config.toml`) and stores it locally in your browser; it never
 travels in the URL. It polls `/state` every couple of seconds, shows per-session summaries when
 enabled, flags the bridge as offline/stalled if it stops responding, and lets you click a waiting
-row to acknowledge it — exactly like tapping the device.
+row to acknowledge it — exactly like tapping the device. A header link opens an **Analytics**
+view (see below).
+
+## Usage analytics
+
+VibeMonitor turns the usage gauge from "how much is left" into "what should I do about it."
+The bridge logs each usage reading to a small SQLite db (`bridge/usage_history.db`, gitignored)
+and derives:
+
+- **Burn rate + projection** — *"↯ ~9%/hr · out ~3:40 PM"* when you're on pace to hit the cap
+  before the window resets, or *"✓ resets first · 35% to spare"* when you've got headroom. This
+  one line is the whole point: it tells you whether to push or pace.
+- **Both reset clocks** — the 5h window and the **weekly** window, shown as exact countdowns
+  (the weekly cap is the real constraint for heavy users, and answers *"when's the next reset"*).
+- **Daily peaks** — a per-day chart of how high you drove usage, with the days you **capped out**
+  marked red → *"which days do I run out."* (Builds up over the first week or two of history.)
+
+These appear three places: a one-line projection under each gauge on the dashboard's main panel,
+a full **Analytics view** (trend sparkline + daily chart + reset clocks), and a compact projection
+line on the device's USAGE tab. The math (`usageanalytics.py`) is a linear projection of your
+recent burn — i.e. *"if you keep developing at this rate."*
+
+API: **`GET /analytics`** (token) returns the full bundle (per-provider projection, sparkline
+`samples`, and `daily` history); `/state` and `/ha` carry the compact projection fields too.
 
 ## Session summaries (optional)
 
@@ -271,7 +294,7 @@ A few extra notes:
 
 ## Data contract
 
-The data endpoints (`/state`, `/ha`, `/ack`, `/hook`) require the header `X-VibeMonitor-Token: <token>` (a missing or wrong token returns `401`). The dashboard shell at `GET /` is unauthenticated (it carries no data; its JS supplies the token when it fetches `/state`). The hub binds to the LAN; the token is the only gate, which is appropriate for a desk toy on a trusted network. No provider secrets are ever sent to the device — they stay on the PC.
+The data endpoints (`/state`, `/ha`, `/analytics`, `/ack`, `/hook`) require the header `X-VibeMonitor-Token: <token>` (a missing or wrong token returns `401`). The dashboard shell at `GET /` is unauthenticated (it carries no data; its JS supplies the token when it fetches `/state`). The hub binds to the LAN; the token is the only gate, which is appropriate for a desk toy on a trusted network. No provider secrets are ever sent to the device — they stay on the PC.
 
 ### `GET /state`
 

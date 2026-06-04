@@ -18,6 +18,15 @@ struct Usage {
     float pct;              // 0..1, or -1 if unknown
     uint32_t resetSec;
     float weekPct;          // -1 if unknown
+
+    // --- projection (bridge-computed) ------------------------------------
+    float   burnPerHr;      // fraction/hr; <= 0 or -1 if unknown
+    bool    willExhaust;    // true => will hit 100% before reset
+    char    etaClock[12];   // e.g. "3:40 PM"; "" if unknown
+    float   leftoverPct;    // fraction expected to remain at reset; -1 if unknown
+    int     weekResetSec;   // seconds until weekly window resets; -1 if unknown
+    uint8_t spark[24];      // recent % trend (0..100)
+    uint8_t sparkLen;       // valid entries in spark[]
 };
 
 struct StateModel {

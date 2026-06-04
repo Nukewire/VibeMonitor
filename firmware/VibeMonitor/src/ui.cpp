@@ -23,9 +23,12 @@ static lv_obj_t* offline_banner;
 static lv_obj_t* claude_bar;
 static lv_obj_t* claude_lbl;
 static lv_obj_t* claude_ico;
+static lv_obj_t* claude_proj;     // projection line under Claude row
 static lv_obj_t* codex_lbl;
 static lv_obj_t* codex_bar;
 static lv_obj_t* codex_ico;
+static lv_obj_t* codex_proj;      // projection line under Codex row
+static lv_obj_t* week_lbl;        // weekly reset countdown
 static AckCb g_ack = NULL;
 
 // settings-tab widgets
@@ -56,6 +59,36 @@ static void fmt_reset(uint32_t resetSec, char* out, size_t n) {
     if (mins >= 60) snprintf(out, n, "%luh %lum",
                              (unsigned long)(mins / 60), (unsigned long)(mins % 60));
     else            snprintf(out, n, "%lum", (unsigned long)mins);
+}
+
+// Coarser countdown for the weekly window: ">=1d" -> "3d 4h", else "4h 47m".
+static void fmt_long(int sec, char* out, size_t n) {
+    if (sec < 0) { strlcpy(out, "--", n); return; }
+    uint32_t mins = (uint32_t)sec / 60;
+    uint32_t hrs  = mins / 60;
+    if (hrs >= 24) snprintf(out, n, "%lud %luh",
+                            (unsigned long)(hrs / 24), (unsigned long)(hrs % 24));
+    else if (hrs >= 1) snprintf(out, n, "%luh %lum",
+                            (unsigned long)hrs, (unsigned long)(mins % 60));
+    else snprintf(out, n, "%lum", (unsigned long)mins);
+}
+
+// Build a provider's projection line text + pick its color from the palette.
+// Returns the LVGL color to render the label in.
+static lv_color_t projection_text(const Usage& u, char* out, size_t n) {
+    if (!u.ok) { out[0] = 0; return pc(P().dim); }
+    if (u.willExhaust && u.etaClock[0]) {
+        snprintf(out, n, "out ~%s", u.etaClock);
+        return pc(P().wait);
+    }
+    if (u.burnPerHr > 0.0f && u.leftoverPct >= 0.0f) {
+        int spare = (int)(u.leftoverPct * 100.0f + 0.5f);
+        if (spare < 0) spare = 0;
+        snprintf(out, n, "%d%% to spare", spare);
+        return pc(P().work);
+    }
+    strlcpy(out, "steady", n);
+    return pc(P().dim);
 }
 
 struct Row {
@@ -210,7 +243,7 @@ void ui_init() {
 
     claude_bar = lv_bar_create(tab_u);
     lv_obj_set_size(claude_bar, SCREEN_W - 56, 16);
-    lv_obj_align(claude_bar, LV_ALIGN_TOP_LEFT, 2, 28);
+    lv_obj_align(claude_bar, LV_ALIGN_TOP_LEFT, 2, 26);
     lv_bar_set_range(claude_bar, 0, 100);
     lv_bar_set_value(claude_bar, 0, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(claude_bar, pc(P().panel), LV_PART_MAIN);
@@ -218,23 +251,44 @@ void ui_init() {
     lv_obj_set_style_radius(claude_bar, 4, LV_PART_MAIN);
     lv_obj_set_style_radius(claude_bar, 4, LV_PART_INDICATOR);
 
+    // Claude projection line (compact, smaller font)
+    claude_proj = lv_label_create(tab_u);
+    lv_obj_align(claude_proj, LV_ALIGN_TOP_LEFT, 26, 44);
+    lv_obj_set_style_text_font(claude_proj, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(claude_proj, pc(P().dim), 0);
+    lv_label_set_text(claude_proj, "");
+
     codex_ico = lv_img_create(tab_u);
     lv_img_set_src(codex_ico, &codex_icon);
-    lv_obj_align(codex_ico, LV_ALIGN_TOP_LEFT, 2, 56);
+    lv_obj_align(codex_ico, LV_ALIGN_TOP_LEFT, 2, 64);
     codex_lbl = lv_label_create(tab_u);
-    lv_obj_align(codex_lbl, LV_ALIGN_TOP_LEFT, 26, 58);
+    lv_obj_align(codex_lbl, LV_ALIGN_TOP_LEFT, 26, 66);
     lv_obj_set_style_text_color(codex_lbl, pc(P().codex), 0);
     lv_label_set_text(codex_lbl, "Codex --");
 
     codex_bar = lv_bar_create(tab_u);
     lv_obj_set_size(codex_bar, SCREEN_W - 56, 16);
-    lv_obj_align(codex_bar, LV_ALIGN_TOP_LEFT, 2, 82);
+    lv_obj_align(codex_bar, LV_ALIGN_TOP_LEFT, 2, 88);
     lv_bar_set_range(codex_bar, 0, 100);
     lv_bar_set_value(codex_bar, 0, LV_ANIM_OFF);
     lv_obj_set_style_bg_color(codex_bar, pc(P().panel), LV_PART_MAIN);
     lv_obj_set_style_bg_color(codex_bar, pc(P().codex), LV_PART_INDICATOR);
     lv_obj_set_style_radius(codex_bar, 4, LV_PART_MAIN);
     lv_obj_set_style_radius(codex_bar, 4, LV_PART_INDICATOR);
+
+    // Codex projection line (compact, smaller font)
+    codex_proj = lv_label_create(tab_u);
+    lv_obj_align(codex_proj, LV_ALIGN_TOP_LEFT, 26, 106);
+    lv_obj_set_style_text_font(codex_proj, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(codex_proj, pc(P().dim), 0);
+    lv_label_set_text(codex_proj, "");
+
+    // Weekly reset countdown — key signal, shown once for the window.
+    week_lbl = lv_label_create(tab_u);
+    lv_obj_align(week_lbl, LV_ALIGN_TOP_LEFT, 2, 132);
+    lv_obj_set_style_text_font(week_lbl, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(week_lbl, pc(P().dim), 0);
+    lv_label_set_text(week_lbl, "");
 
     // ---- settings tab ----
     // Brightness
@@ -346,6 +400,10 @@ void ui_apply_theme() {
     lv_obj_set_style_text_color(codex_lbl, pc(P().codex), 0);
     lv_obj_set_style_bg_color(codex_bar, pc(P().panel), LV_PART_MAIN);
     lv_obj_set_style_bg_color(codex_bar, pc(P().codex), LV_PART_INDICATOR);
+    // projection lines are recolored on next poll; default to dim for the swap
+    lv_obj_set_style_text_color(claude_proj, pc(P().dim), 0);
+    lv_obj_set_style_text_color(codex_proj, pc(P().dim), 0);
+    lv_obj_set_style_text_color(week_lbl, pc(P().dim), 0);
 
     // settings tab
     lv_obj_set_style_text_color(set_bright_lbl, pc(P().fg), 0);
@@ -441,9 +499,15 @@ void ui_update(const StateModel* m) {
         char c[56];
         snprintf(c, sizeof(c), "Claude %d%%   resets %s", pct, rs);
         lv_label_set_text(claude_lbl, c);
+
+        char pj[24];
+        lv_color_t pjc = projection_text(m->claude, pj, sizeof(pj));
+        lv_label_set_text(claude_proj, pj);
+        lv_obj_set_style_text_color(claude_proj, pjc, 0);
     } else {
         lv_bar_set_value(claude_bar, 0, LV_ANIM_OFF);
         lv_label_set_text(claude_lbl, "Claude --");
+        lv_label_set_text(claude_proj, "");
     }
     if (m->codex.ok) {
         int cpc = (int)(m->codex.pct * 100 + 0.5f);
@@ -453,8 +517,28 @@ void ui_update(const StateModel* m) {
         char cc[56];
         snprintf(cc, sizeof(cc), "Codex %d%%   resets %s", cpc, crs);
         lv_label_set_text(codex_lbl, cc);
+
+        char pj[24];
+        lv_color_t pjc = projection_text(m->codex, pj, sizeof(pj));
+        lv_label_set_text(codex_proj, pj);
+        lv_obj_set_style_text_color(codex_proj, pjc, 0);
     } else {
         lv_bar_set_value(codex_bar, 0, LV_ANIM_OFF);
         lv_label_set_text(codex_lbl, "Codex --");
+        lv_label_set_text(codex_proj, "");
+    }
+
+    // Weekly reset — prefer whichever provider reports it (claude first).
+    int wsec = (m->claude.ok && m->claude.weekResetSec >= 0) ? m->claude.weekResetSec
+             : (m->codex.ok  && m->codex.weekResetSec  >= 0) ? m->codex.weekResetSec
+             : -1;
+    if (wsec >= 0) {
+        char wf[16];
+        fmt_long(wsec, wf, sizeof(wf));
+        char wl[40];
+        snprintf(wl, sizeof(wl), "week resets in %s", wf);
+        lv_label_set_text(week_lbl, wl);
+    } else {
+        lv_label_set_text(week_lbl, "");
     }
 }

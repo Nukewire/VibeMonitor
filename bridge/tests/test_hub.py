@@ -7,11 +7,42 @@ CFG = Config(token="secret", working_sec=10, waiting_ttl_sec=1800, gone_ttl_sec=
 H = {"X-VibeMonitor-Token": "secret"}
 
 
-def make_client(store, usage=None, summary_provider=None):
+def make_client(store, usage=None, summary_provider=None, analytics=None):
     app = create_app(store, CFG, usage_provider=lambda: (usage or {"claude": {}, "codex": {}}),
-                     clock=lambda: 1005.0, summary_provider=summary_provider)
+                     clock=lambda: 1005.0, summary_provider=summary_provider,
+                     analytics_provider=(lambda: analytics) if analytics is not None else None)
     app.testing = True
     return app.test_client()
+
+
+def test_state_merges_compact_analytics_into_usage():
+    usage = {"claude": {"ok": True, "pct": 0.5, "resetSec": 3600}, "codex": {"ok": False}}
+    analytics = {"claude": {"burnPerHr": 0.2, "etaSec": 9000, "etaClock": "3:40 PM",
+                            "willExhaustBeforeReset": True, "leftoverPct": None},
+                 "codex": {}}
+    body = make_client(Store(), usage=usage, analytics=analytics).get("/state", headers=H).get_json()
+    cl = body["usage"]["claude"]
+    assert cl["burnPerHr"] == 0.2 and cl["etaClock"] == "3:40 PM"
+    assert cl["willExhaustBeforeReset"] is True
+
+
+def test_analytics_endpoint_requires_token_and_returns_bundle():
+    bundle = {"claude": {"burnPerHr": 0.1, "daily": [], "samples": []}, "codex": {}}
+    c = make_client(Store(), analytics=bundle)
+    assert c.get("/analytics").status_code == 401
+    assert c.get("/analytics", headers=H).get_json()["claude"]["burnPerHr"] == 0.1
+
+
+def test_ha_includes_analytics_fields():
+    usage = {"claude": {"ok": True, "pct": 0.5, "resetSec": 3600, "weekResetSec": 180000},
+             "codex": {"ok": False}}
+    analytics = {"claude": {"burnPerHr": 0.25, "etaSec": 7200,
+                            "willExhaustBeforeReset": True},
+                 "codex": {}}
+    body = make_client(Store(), usage=usage, analytics=analytics).get("/ha", headers=H).get_json()
+    assert body["claude_burn_pct_per_hr"] == 25.0
+    assert body["claude_eta_min"] == 120 and body["claude_runs_out_first"] is True
+    assert body["claude_week_reset_hr"] == 50.0
 
 
 def test_state_includes_summary_when_provider_set():

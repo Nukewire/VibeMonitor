@@ -27,6 +27,11 @@ venv/
 *.log
 serial_log.txt
 
+# --- Local data (usage history; personal) ---
+*.db
+*.sqlite
+*.sqlite3
+
 # --- Agent / scratch (private; kept local, not shared publicly) ---
 .remember/
 .claude/

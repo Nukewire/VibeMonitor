@@ -16,18 +16,26 @@ _D7R = "anthropic-ratelimit-unified-7d-reset"
 def parse_claude_headers(h: dict, now: float) -> dict:
     u5 = h.get(_H5U)
     if u5 is None:
-        return {"ok": False, "pct": None, "window": "5h", "resetSec": None, "weekPct": None}
+        return {"ok": False, "pct": None, "window": "5h", "resetSec": None,
+                "weekPct": None, "weekResetSec": None}
     try:
         reset5 = int(h.get(_H5R, "0"))
     except ValueError:
         reset5 = 0
     week = h.get(_D7U)
+    week_reset = None
+    if h.get(_D7R) is not None:
+        try:
+            week_reset = max(0, int(h.get(_D7R, "0")) - int(now))
+        except ValueError:
+            week_reset = None
     return {
         "ok": True,
         "pct": float(u5),
         "window": "5h",
         "resetSec": max(0, reset5 - int(now)),
         "weekPct": float(week) if week is not None else None,
+        "weekResetSec": week_reset,
     }
 
 
@@ -48,7 +56,8 @@ def _default_poster(token: str):
 
 
 def claude_usage(token: str | None, now: float, _poster=None) -> dict:
-    miss = {"ok": False, "pct": None, "window": "5h", "resetSec": None, "weekPct": None}
+    miss = {"ok": False, "pct": None, "window": "5h", "resetSec": None,
+            "weekPct": None, "weekResetSec": None}
     if not token:
         return miss
     try:
@@ -59,7 +68,8 @@ def claude_usage(token: str | None, now: float, _poster=None) -> dict:
 
 
 def _codex_miss() -> dict:
-    return {"ok": False, "pct": None, "window": "5h", "resetSec": None, "weekPct": None}
+    return {"ok": False, "pct": None, "window": "5h", "resetSec": None,
+            "weekPct": None, "weekResetSec": None}
 
 
 def _window_reset_sec(window: dict, now: float) -> int:
@@ -101,6 +111,7 @@ def parse_codex_token_count(text: str, now: float = 0.0) -> dict:
         "window": "5h",
         "resetSec": _window_reset_sec(prim, now),
         "weekPct": float(week) / 100.0 if week is not None else None,
+        "weekResetSec": _window_reset_sec(sec, now) if sec else None,
     }
 
 

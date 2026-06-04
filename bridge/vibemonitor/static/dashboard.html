@@ -58,6 +58,11 @@
   .gauge.claude .bar > i{background:var(--claude)}
   .gauge.codex  .bar > i{background:var(--codex)}
   .gauge .greset{margin-top:10px; font-size:11.5px; color:var(--dim); font-weight:600}
+  .gauge .gproj{margin-top:6px; font-size:11.5px; font-weight:600; line-height:1.3; min-height:0}
+  .gauge .gproj:empty{display:none}
+  .gproj.amber{color:var(--waiting)}
+  .gproj.green{color:var(--working)}
+  .gproj.dim{color:var(--dim)}
 
   /* ---- sessions ---- */
   .seclabel{
@@ -141,6 +146,37 @@
   .brand .glow.off{background:var(--critical); box-shadow:0 0 10px var(--critical)}
   .brand h2{margin:0; font-size:15px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase}
   .brand .sub{color:var(--dim); font-size:11px; margin-left:auto; font-variant-numeric:tabular-nums}
+  .navlink{
+    font-size:12px; font-weight:700; letter-spacing:.4px; color:var(--accent);
+    background:none; border:none; cursor:pointer; padding:4px 2px; margin-left:14px;
+    font-family:inherit; white-space:nowrap;
+  }
+  .navlink:active{opacity:.7}
+
+  /* ---- analytics view ---- */
+  #analytics{display:none}
+  #analytics.show{display:block}
+  #main.hide{display:none}
+  .anavrow{display:flex; align-items:center; gap:12px; margin:0 4px 18px}
+  .anavrow .atitle{font-size:15px; font-weight:700; letter-spacing:1.5px; text-transform:uppercase}
+  .aweek{
+    background:var(--panel); border-radius:var(--radius); padding:14px 18px; margin-bottom:18px;
+  }
+  .aweek .awlabel{font-size:11px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--dim)}
+  .aweek .awval{font-size:22px; font-weight:700; margin-top:5px; font-variant-numeric:tabular-nums}
+  .aprov{
+    background:var(--panel); border-radius:var(--radius); padding:16px 18px; margin-bottom:16px;
+  }
+  .aprov .aphead{display:flex; align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap}
+  .aprov .apname{font-size:13px; font-weight:700; letter-spacing:.5px; text-transform:uppercase}
+  .aprov.claude .apname{color:var(--claude)}
+  .aprov.codex  .apname{color:var(--codex)}
+  .aprov .approj{font-size:11.5px; font-weight:600}
+  .apsub{font-size:11px; color:var(--dim); font-weight:600; margin-top:4px}
+  .achartlbl{font-size:10px; font-weight:700; letter-spacing:1px; text-transform:uppercase; color:var(--dim); margin:14px 0 6px}
+  .aspark, .adaily{width:100%; display:block}
+  .aempty{color:var(--dim); font-size:13px; padding:10px 0}
+  .adaylabels{display:flex; justify-content:space-between; margin-top:4px; font-size:9.5px; color:var(--dim); font-variant-numeric:tabular-nums}
 </style>
 </head>
 <body>
@@ -149,35 +185,52 @@
       <span class="glow" id="livedot"></span>
       <h2>VibeMonitor</h2>
       <span class="sub" id="hbsub"></span>
+      <button type="button" class="navlink" id="toAnalytics">Analytics →</button>
     </div>
 
     <div id="banner">connection lost — bridge offline. showing last known state.</div>
     <div id="stalehint">bridge stalled — last scan was a while ago.</div>
 
-    <div class="usage">
-      <div class="gauge claude" id="g-claude">
-        <div class="ghead"><span class="glabel">Claude</span><span class="gweek"></span></div>
-        <div class="gpct">--</div>
-        <div class="bar"><i></i></div>
-        <div class="greset"></div>
+    <div id="main">
+      <div class="usage">
+        <div class="gauge claude" id="g-claude">
+          <div class="ghead"><span class="glabel">Claude</span><span class="gweek"></span></div>
+          <div class="gpct">--</div>
+          <div class="bar"><i></i></div>
+          <div class="greset"></div>
+          <div class="gproj"></div>
+        </div>
+        <div class="gauge codex" id="g-codex">
+          <div class="ghead"><span class="glabel">Codex</span><span class="gweek"></span></div>
+          <div class="gpct">--</div>
+          <div class="bar"><i></i></div>
+          <div class="greset"></div>
+          <div class="gproj"></div>
+        </div>
       </div>
-      <div class="gauge codex" id="g-codex">
-        <div class="ghead"><span class="glabel">Codex</span><span class="gweek"></span></div>
-        <div class="gpct">--</div>
-        <div class="bar"><i></i></div>
-        <div class="greset"></div>
+
+      <div class="seclabel">Sessions</div>
+      <div class="sessions" id="sessions">
+        <div class="empty">waiting for the bridge…</div>
       </div>
+
+      <footer>
+        <span id="updated">—</span>
+        <span class="counts" id="counts"></span>
+      </footer>
     </div>
 
-    <div class="seclabel">Sessions</div>
-    <div class="sessions" id="sessions">
-      <div class="empty">waiting for the bridge…</div>
+    <div id="analytics">
+      <div class="anavrow">
+        <button type="button" class="navlink" id="toMain">← Back</button>
+        <span class="atitle">Analytics</span>
+      </div>
+      <div class="aweek" id="aweek">
+        <div class="awlabel">Weekly window resets in</div>
+        <div class="awval" id="aweekval">—</div>
+      </div>
+      <div id="aprovs"></div>
     </div>
-
-    <footer>
-      <span id="updated">—</span>
-      <span class="counts" id="counts"></span>
-    </footer>
   </div>
 
   <div id="overlay">
@@ -206,6 +259,9 @@
   var token = null;
   var timer = null;
   var hasGoodData = false;
+  var lastUsage = {};
+  var analyticsTimer = null;
+  var analyticsOpen = false;
 
   function getToken(){ try { return localStorage.getItem(KEY); } catch(e){ return null; } }
   function setToken(t){ try { localStorage.setItem(KEY, t); } catch(e){} }
@@ -227,11 +283,34 @@
     if (h > 0) return "resets " + h + "h " + m + "m";
     return "resets " + m + "m";
   }
+  function fmtDur(sec){
+    if (sec == null || sec < 0) return "—";
+    sec = Math.floor(sec);
+    var d = Math.floor(sec/86400), h = Math.floor((sec%86400)/3600), m = Math.floor((sec%3600)/60);
+    if (d > 0) return d + "d " + h + "h";
+    if (h > 0) return h + "h " + m + "m";
+    return m + "m";
+  }
   function fmtClock(ts){
     var d = ts ? new Date(ts*1000) : new Date();
     var hh = d.getHours(), mm = d.getMinutes(), ss = d.getSeconds();
     function p(n){ return (n<10?"0":"") + n; }
     return p(hh) + ":" + p(mm) + ":" + p(ss);
+  }
+
+  // ---- projection summary (shared by gauge + analytics) ----
+  // returns {text, tone} where tone is "amber" | "green" | "dim"
+  function projection(u){
+    u = u || {};
+    var burn = u.burnPerHr;
+    if (u.willExhaustBeforeReset){
+      var rate = (typeof burn === "number") ? Math.round(burn*100) : 0;
+      return { text: "↯ ~" + rate + "%/hr · out ~" + (u.etaClock || "?"), tone: "amber" };
+    }
+    if (typeof burn === "number" && burn > 0 && u.leftoverPct != null){
+      return { text: "✓ resets first · " + Math.round(u.leftoverPct*100) + "% to spare", tone: "green" };
+    }
+    return { text: "· steady", tone: "dim" };
   }
 
   // ---- rendering ----
@@ -241,6 +320,7 @@
     var fill = box.querySelector(".bar > i");
     var weekEl = box.querySelector(".gweek");
     var resetEl = box.querySelector(".greset");
+    var projEl = box.querySelector(".gproj");
     u = u || {};
     if (!u.ok || u.pct == null){
       pctEl.textContent = "--";
@@ -248,6 +328,8 @@
       fill.style.width = "0%";
       weekEl.textContent = "";
       resetEl.textContent = "unavailable";
+      projEl.textContent = "";
+      projEl.className = "gproj";
       return;
     }
     var pct = Math.max(0, Math.min(1, u.pct));
@@ -256,6 +338,9 @@
     fill.style.width = (pct*100).toFixed(1) + "%";
     weekEl.textContent = (u.weekPct != null) ? ("wk " + Math.round(u.weekPct*100) + "%") : "";
     resetEl.textContent = fmtReset(u.resetSec);
+    var pr = projection(u);
+    projEl.textContent = pr.text;
+    projEl.className = "gproj " + pr.tone;
   }
 
   function renderSessions(list){
@@ -328,6 +413,7 @@
 
   function render(data){
     var usage = data.usage || {};
+    lastUsage = usage;
     renderGauge("g-claude", usage.claude);
     renderGauge("g-codex", usage.codex);
     renderSessions(data.sessions);
@@ -368,6 +454,7 @@
       .catch(function(err){
         if (err && err.code === 401){
           stopPolling();
+          stopAnalytics();
           clearToken();
           token = null;
           showOverlay(true);
@@ -389,6 +476,203 @@
       body: JSON.stringify({ id: id })
     }).then(function(){ poll(); }).catch(function(){ /* offline handled by poll */ });
   }
+
+  // ---- analytics view ----
+  var ANALYTICS_MS = 15000;
+  var mainEl = $("main"), analyticsEl = $("analytics");
+  var aprovsEl = $("aprovs"), aweekValEl = $("aweekval");
+  var toAnalyticsBtn = $("toAnalytics"), toMainBtn = $("toMain");
+
+  function svgEl(name, attrs){
+    var el = document.createElementNS("http://www.w3.org/2000/svg", name);
+    for (var k in attrs){ if (attrs.hasOwnProperty(k)) el.setAttribute(k, attrs[k]); }
+    return el;
+  }
+
+  function renderSparkline(parent, samples, color){
+    var W = 320, Hh = 40, n = samples.length;
+    if (n < 2){
+      var note = document.createElement("div");
+      note.className = "aempty";
+      note.textContent = "collecting usage history…";
+      parent.appendChild(note);
+      return;
+    }
+    var svg = svgEl("svg", { viewBox: "0 0 " + W + " " + Hh, class: "aspark",
+                             preserveAspectRatio: "none", height: Hh });
+    var pts = [];
+    for (var i = 0; i < n; i++){
+      var pct = Math.max(0, Math.min(1, samples[i].pct || 0));
+      var x = (n === 1) ? 0 : (i / (n - 1)) * W;
+      var y = Hh - pct * Hh;
+      pts.push(x.toFixed(1) + "," + y.toFixed(1));
+    }
+    var poly = svgEl("polyline", { points: pts.join(" "), fill: "none",
+                                   stroke: color, "stroke-width": "2",
+                                   "stroke-linejoin": "round", "stroke-linecap": "round" });
+    svg.appendChild(poly);
+    parent.appendChild(svg);
+  }
+
+  function renderDaily(parent, daily, color){
+    var days = (daily || []).slice(-14);
+    if (!days.length) return;
+    var W = 320, Hh = 70, gap = 3;
+    var bw = (W - gap*(days.length-1)) / days.length;
+    var svg = svgEl("svg", { viewBox: "0 0 " + W + " " + Hh, class: "adaily",
+                             preserveAspectRatio: "none", height: Hh });
+    // faint 100% gridline
+    svg.appendChild(svgEl("line", { x1: 0, y1: 1, x2: W, y2: 1,
+                                    stroke: "rgba(255,255,255,.10)", "stroke-width": "1" }));
+    days.forEach(function(d, i){
+      var pk = Math.max(0, Math.min(1, d.peak_pct || 0));
+      var bh = Math.max(1, pk * Hh);
+      var x = i * (bw + gap);
+      var rect = svgEl("rect", { x: x.toFixed(1), y: (Hh - bh).toFixed(1),
+                                 width: bw.toFixed(1), height: bh.toFixed(1), rx: 1.5 });
+      if (d.hit_cap){ rect.setAttribute("fill", "#E5484D"); }
+      else { rect.setAttribute("fill", color); rect.setAttribute("opacity", "0.55"); }
+      svg.appendChild(rect);
+    });
+    parent.appendChild(svg);
+    // date labels under first / mid / last
+    var labels = document.createElement("div");
+    labels.className = "adaylabels";
+    var idxs = days.length <= 3 ? days.map(function(_,i){return i;})
+                                : [0, Math.floor(days.length/2), days.length-1];
+    var seen = {};
+    idxs.forEach(function(ix){
+      if (seen[ix]) return; seen[ix] = 1;
+      var sp = document.createElement("span");
+      var ds = days[ix].date || "";
+      sp.textContent = ds.length >= 10 ? ds.slice(5) : ds;   // MM-DD
+      labels.appendChild(sp);
+    });
+    parent.appendChild(labels);
+  }
+
+  function renderProvider(name, cls, color, data){
+    var box = document.createElement("div");
+    box.className = "aprov " + cls;
+
+    var head = document.createElement("div");
+    head.className = "aphead";
+    var nm = document.createElement("span");
+    nm.className = "apname";
+    nm.textContent = name;
+    nm.style.color = color;
+    head.appendChild(nm);
+    var pr = projection(data);
+    var prj = document.createElement("span");
+    prj.className = "approj " + pr.tone;
+    if (pr.tone === "amber") prj.style.color = "#F5A623";
+    else if (pr.tone === "green") prj.style.color = "#4ADE80";
+    else prj.style.color = "#8A8A8A";
+    prj.textContent = pr.text;
+    head.appendChild(prj);
+    box.appendChild(head);
+
+    // 5h window reset (from /state usage if available)
+    var u5 = (lastUsage && lastUsage[cls]) || {};
+    var sub = document.createElement("div");
+    sub.className = "apsub";
+    var bits = [];
+    if (typeof u5.resetSec === "number") bits.push("5h window resets in " + fmtDur(u5.resetSec));
+    if (typeof data.weekResetSec === "number") bits.push("weekly in " + fmtDur(data.weekResetSec));
+    sub.textContent = bits.join("  ·  ");
+    if (bits.length) box.appendChild(sub);
+
+    var samples = data.samples || [];
+    var l1 = document.createElement("div");
+    l1.className = "achartlbl";
+    l1.textContent = "Trend";
+    box.appendChild(l1);
+    if (!samples.length){
+      var e = document.createElement("div");
+      e.className = "aempty";
+      e.textContent = "collecting usage history…";
+      box.appendChild(e);
+    } else {
+      renderSparkline(box, samples, color);
+    }
+
+    if ((data.daily || []).length){
+      var l2 = document.createElement("div");
+      l2.className = "achartlbl";
+      l2.textContent = "Daily peak";
+      box.appendChild(l2);
+      renderDaily(box, data.daily, color);
+    }
+
+    aprovsEl.appendChild(box);
+  }
+
+  function hasData(p){
+    return p && ((p.samples && p.samples.length) || (p.daily && p.daily.length) ||
+                 typeof p.burnPerHr === "number" || typeof p.weekResetSec === "number");
+  }
+
+  function renderAnalytics(a){
+    a = a || {};
+    aprovsEl.textContent = "";
+    // weekly reset banner — prefer whichever provider reports it
+    var wk = null;
+    ["claude", "codex"].forEach(function(p){
+      var v = a[p] && a[p].weekResetSec;
+      if (wk == null && typeof v === "number") wk = v;
+    });
+    aweekValEl.textContent = (wk != null) ? fmtDur(wk) : "—";
+
+    var any = false;
+    if (hasData(a.claude)){ renderProvider("Claude", "claude", "#D97757", a.claude); any = true; }
+    if (hasData(a.codex)){ renderProvider("Codex", "codex", "#A78BFA", a.codex); any = true; }
+    if (!any){
+      var e = document.createElement("div");
+      e.className = "aempty";
+      e.textContent = "collecting usage history…";
+      aprovsEl.appendChild(e);
+    }
+  }
+
+  function pollAnalytics(){
+    if (!token || !analyticsOpen) return;
+    fetch("/analytics", { headers: { "X-VibeMonitor-Token": token } })
+      .then(function(res){
+        if (res.status === 401){ var err = new Error("unauthorized"); err.code = 401; throw err; }
+        if (!res.ok){ throw new Error("bad status " + res.status); }
+        return res.json();
+      })
+      .then(function(a){ setOffline(false); renderAnalytics(a); })
+      .catch(function(err){
+        if (err && err.code === 401){
+          stopPolling(); stopAnalytics(); clearToken(); token = null;
+          showMain(); showOverlay(true); return;
+        }
+        setOffline(true);
+      });
+  }
+  function startAnalytics(){
+    stopAnalytics();
+    pollAnalytics();
+    analyticsTimer = setInterval(pollAnalytics, ANALYTICS_MS);
+  }
+  function stopAnalytics(){
+    if (analyticsTimer){ clearInterval(analyticsTimer); analyticsTimer = null; }
+  }
+  function showAnalytics(){
+    analyticsOpen = true;
+    mainEl.classList.add("hide");
+    analyticsEl.classList.add("show");
+    startAnalytics();
+  }
+  function showMain(){
+    analyticsOpen = false;
+    stopAnalytics();
+    analyticsEl.classList.remove("show");
+    mainEl.classList.remove("hide");
+  }
+  toAnalyticsBtn.addEventListener("click", showAnalytics);
+  toMainBtn.addEventListener("click", showMain);
 
   function startPolling(){
     stopPolling();

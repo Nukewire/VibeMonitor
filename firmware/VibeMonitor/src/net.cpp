@@ -27,6 +27,28 @@ static void parse_usage(JsonObjectConst u, Usage* out) {
     else out->pct = -1.0f;
     out->resetSec = u["resetSec"] | 0;
     out->weekPct = u["weekPct"].isNull() ? -1.0f : (float)(u["weekPct"] | 0.0);
+
+    // --- projection fields (all null-safe) -------------------------------
+    out->burnPerHr   = (float)(u["burnPerHr"] | -1.0);
+    out->willExhaust = u["willExhaustBeforeReset"] | false;
+    if (!u["etaClock"].isNull())
+        strlcpy(out->etaClock, u["etaClock"] | "", sizeof(out->etaClock));
+    else
+        out->etaClock[0] = 0;
+    out->leftoverPct   = u["leftoverPct"].isNull() ? -1.0f : (float)(u["leftoverPct"] | 0.0);
+    out->weekResetSec  = u["weekResetSec"] | -1;
+
+    out->sparkLen = 0;
+    JsonArrayConst sp = u["spark"].as<JsonArrayConst>();
+    if (!sp.isNull()) {
+        for (JsonVariantConst v : sp) {
+            if (out->sparkLen >= 24) break;
+            int iv = v | 0;
+            if (iv < 0)   iv = 0;
+            if (iv > 100) iv = 100;
+            out->spark[out->sparkLen++] = (uint8_t)iv;
+        }
+    }
 }
 
 bool net_fetch_state(StateModel* out) {

@@ -48,7 +48,7 @@ def _dedupe_and_filter(rows: list[dict]) -> list[dict]:
 
 
 def create_app(store: Store, cfg: Config, usage_provider=None, clock=time.time,
-               heartbeat=None, summary_provider=None) -> Flask:
+               heartbeat=None, summary_provider=None, analytics_provider=None) -> Flask:
     app = Flask(__name__)
 
     def require_token(fn):
@@ -88,6 +88,20 @@ def create_app(store: Store, cfg: Config, usage_provider=None, clock=time.time,
                 r["summary"] = summary_provider(r["id"])
         out.sort(key=lambda x: (_ORDER.get(x["status"], 9), x["ageSec"], x["tool"], x["project"]))
         usage = usage_provider() if usage_provider else {"claude": {}, "codex": {}}
+        if analytics_provider:                 # merge compact projection fields into usage
+            a = analytics_provider() or {}
+            for p in ("claude", "codex"):
+                u, pa = usage.get(p), a.get(p) or {}
+                if isinstance(u, dict):
+                    for k in ("burnPerHr", "etaSec", "etaClock",
+                              "willExhaustBeforeReset", "leftoverPct"):
+                        if k in pa:
+                            u[k] = pa[k]
+                    sp = pa.get("samples") or []        # tiny trend for the device (<=24 ints)
+                    if sp:
+                        step = max(1, len(sp) // 24)
+                        u["spark"] = [round((sp[i].get("pct") or 0) * 100)
+                                      for i in range(0, len(sp), step)][:24]
         last_scan = (heartbeat or {}).get("last_scan", 0.0)
         stale_sec = int(max(0.0, now - last_scan)) if last_scan else -1
         return now, out, usage, stale_sec
@@ -118,6 +132,18 @@ def create_app(store: Store, cfg: Config, usage_provider=None, clock=time.time,
             v = _u(provider, "resetSec")
             return round(v / 60) if isinstance(v, (int, float)) else None
 
+        def _eta_min(provider: str):
+            v = _u(provider, "etaSec")
+            return round(v / 60) if isinstance(v, (int, float)) else None
+
+        def _burn_pct_hr(provider: str):
+            v = _u(provider, "burnPerHr")
+            return round(v * 100, 1) if isinstance(v, (int, float)) else None
+
+        def _week_reset_hr(provider: str):
+            v = _u(provider, "weekResetSec")
+            return round(v / 3600, 1) if isinstance(v, (int, float)) else None
+
         counts = {"waiting": 0, "working": 0, "idle": 0}
         for r in rows:
             if r["status"] in counts:
@@ -129,10 +155,17 @@ def create_app(store: Store, cfg: Config, usage_provider=None, clock=time.time,
             "claude_pct": _pct("claude", "pct"),
             "claude_week_pct": _pct("claude", "weekPct"),
             "claude_reset_min": _reset_min("claude"),
+            "claude_burn_pct_per_hr": _burn_pct_hr("claude"),
+            "claude_eta_min": _eta_min("claude"),
+            "claude_runs_out_first": bool(_u("claude", "willExhaustBeforeReset")),
+            "claude_week_reset_hr": _week_reset_hr("claude"),
             "codex_ok": bool(_u("codex", "ok")),
             "codex_pct": _pct("codex", "pct"),
             "codex_week_pct": _pct("codex", "weekPct"),
             "codex_reset_min": _reset_min("codex"),
+            "codex_burn_pct_per_hr": _burn_pct_hr("codex"),
+            "codex_eta_min": _eta_min("codex"),
+            "codex_runs_out_first": bool(_u("codex", "willExhaustBeforeReset")),
             "waiting_count": counts["waiting"],
             "working_count": counts["working"],
             "idle_count": counts["idle"],
@@ -141,6 +174,14 @@ def create_app(store: Store, cfg: Config, usage_provider=None, clock=time.time,
             "stale_sec": stale_sec,
             "waiting": waiting,
         })
+
+    @app.get("/analytics")
+    @require_token
+    def analytics():
+        """Full usage-analytics bundle (per provider: projection scalars, sparkline
+        `samples`, and per-day `daily` history) for the dashboard Analytics view."""
+        return jsonify(analytics_provider() if analytics_provider
+                       else {"claude": {}, "codex": {}})
 
     @app.post("/ack")
     @require_token
