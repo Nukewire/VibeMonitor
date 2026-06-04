@@ -23,6 +23,15 @@ class Config:
     openrouter_api_key: str | None = None
     poll_summary_sec: float = 15.0
     ha_webhook_url: str | None = None
+    # phone push
+    push_provider: str = "ntfy"           # "ntfy" | "pushover"
+    push_ntfy_url: str | None = None
+    push_pushover_token: str | None = None
+    push_pushover_user: str | None = None
+    push_escalate_sec: int = 600
+    # cost attribution
+    poll_costs_sec: float = 120.0
+    pricing: dict = None                  # model -> {"input": $/1M, "output": $/1M}
 
 
 def load_config(path: str | Path) -> Config:
@@ -37,6 +46,8 @@ def load_config(path: str | Path) -> Config:
     summary = data.get("summary", {})
     openrouter = data.get("openrouter", {})
     homeassistant = data.get("homeassistant", {})
+    push = data.get("push", {})
+    pricing = data.get("pricing", {}) or {}
     return Config(
         token=token,
         port=int(data.get("port", 8787)),
@@ -55,4 +66,11 @@ def load_config(path: str | Path) -> Config:
         openrouter_api_key=openrouter.get("api_key"),
         poll_summary_sec=float(poll.get("summary_sec", 15.0)),
         ha_webhook_url=homeassistant.get("webhook_url"),
+        push_provider=str(push.get("provider", "ntfy")),
+        push_ntfy_url=push.get("ntfy_url") or None,
+        push_pushover_token=push.get("pushover_token") or None,
+        push_pushover_user=push.get("pushover_user") or None,
+        push_escalate_sec=int(push.get("escalate_sec", 600)),
+        poll_costs_sec=float(poll.get("costs_sec", 120.0)),
+        pricing={str(k): dict(v) for k, v in pricing.items() if isinstance(v, dict)},
     )

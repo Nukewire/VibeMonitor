@@ -6,6 +6,7 @@ from flask import Flask, jsonify, request, Response
 from vibemonitor.config import Config
 from vibemonitor.model import Store
 from vibemonitor.statemachine import derive_status, apply_hook_event, GONE, JUNK_PROJECTS
+from vibemonitor.usageanalytics import capacity
 
 _STATIC_DIR = Path(__file__).parent / "static"
 
@@ -35,6 +36,8 @@ def _dedupe_and_filter(rows: list[dict]) -> list[dict]:
         rep_id = (min(waiting_rows, key=lambda x: x["ageSec"])["id"]
                   if waiting_rows else min(grp, key=lambda x: x["ageSec"])["id"])
         count = len(grp)
+        waits = [g["waitingSec"] for g in grp
+                 if g["waiting"] and g.get("waitingSec") is not None]
         merged.append({
             "id": rep_id,
             "tool": tool,
@@ -42,13 +45,15 @@ def _dedupe_and_filter(rows: list[dict]) -> list[dict]:
             "status": best["status"],
             "ageSec": min(g["ageSec"] for g in grp),
             "waiting": any(g["waiting"] for g in grp),
+            "waitingSec": max(waits) if waits else None,   # longest-waiting in the group
             "count": count,
         })
     return merged
 
 
 def create_app(store: Store, cfg: Config, usage_provider=None, clock=time.time,
-               heartbeat=None, summary_provider=None, analytics_provider=None) -> Flask:
+               heartbeat=None, summary_provider=None, analytics_provider=None,
+               costs_provider=None) -> Flask:
     app = Flask(__name__)
 
     def require_token(fn):
@@ -77,10 +82,13 @@ def create_app(store: Store, cfg: Config, usage_provider=None, clock=time.time,
             status = derive_status(s, now=now, cfg=cfg)
             if status == GONE:
                 continue          # filtered from response; poll-loop reaper owns removal
+            is_waiting = status == "waiting"
+            waiting_sec = (int(max(0.0, now - s.waiting_since))
+                           if is_waiting and s.waiting_since is not None else None)
             out.append({
                 "id": s.id, "tool": s.tool, "project": s.project,
                 "status": status, "ageSec": int(max(0.0, now - s.last_activity)),
-                "waiting": status == "waiting",
+                "waiting": is_waiting, "waitingSec": waiting_sec,
             })
         out = _dedupe_and_filter(out)
         if summary_provider:
@@ -104,21 +112,28 @@ def create_app(store: Store, cfg: Config, usage_provider=None, clock=time.time,
                                       for i in range(0, len(sp), step)][-24:]  # keep most-recent
         last_scan = (heartbeat or {}).get("last_scan", 0.0)
         stale_sec = int(max(0.0, now - last_scan)) if last_scan else -1
-        return now, out, usage, stale_sec
+        counts = {"waiting": 0, "working": 0, "idle": 0}
+        for r in out:
+            if r["status"] in counts:
+                counts[r["status"]] += 1
+        cap = capacity(usage, analytics_provider() if analytics_provider else {}, counts)
+        if isinstance(usage, dict):
+            usage["capacity"] = cap        # compact advisor on the usage block
+        return now, out, usage, stale_sec, cap
 
     @app.get("/state")
     @require_token
     def state():
-        now, out, usage, stale_sec = _collect()
+        now, out, usage, stale_sec, cap = _collect()
         return jsonify({"ts": int(now), "usage": usage, "sessions": out,
-                        "staleSec": stale_sec})
+                        "staleSec": stale_sec, "capacity": cap})
 
     @app.get("/ha")
     @require_token
     def homeassistant():
         """Flat, Home-Assistant-template-friendly view of the same data. Scalars for
         easy REST sensors; `waiting` lists which projects need you."""
-        _now, rows, usage, stale_sec = _collect()
+        _now, rows, usage, stale_sec, cap = _collect()
 
         def _u(provider: str, field: str):
             v = (usage.get(provider) or {}).get(field)
@@ -150,6 +165,8 @@ def create_app(store: Store, cfg: Config, usage_provider=None, clock=time.time,
                 counts[r["status"]] += 1
         waiting = [{"tool": r["tool"], "project": r["project"],
                     "summary": r.get("summary")} for r in rows if r["status"] == "waiting"]
+        waiting_secs = [r["waitingSec"] for r in rows
+                        if r["status"] == "waiting" and r.get("waitingSec") is not None]
         return jsonify({
             "claude_ok": bool(_u("claude", "ok")),
             "claude_pct": _pct("claude", "pct"),
@@ -171,6 +188,8 @@ def create_app(store: Store, cfg: Config, usage_provider=None, clock=time.time,
             "idle_count": counts["idle"],
             "session_count": len(rows),
             "any_waiting": counts["waiting"] > 0,
+            "longest_waiting_sec": max(waiting_secs) if waiting_secs else None,
+            "capacity_status": cap.get("status"),
             "stale_sec": stale_sec,
             "waiting": waiting,
         })
@@ -180,8 +199,21 @@ def create_app(store: Store, cfg: Config, usage_provider=None, clock=time.time,
     def analytics():
         """Full usage-analytics bundle (per provider: projection scalars, sparkline
         `samples`, and per-day `daily` history) for the dashboard Analytics view."""
-        return jsonify(analytics_provider() if analytics_provider
-                       else {"claude": {}, "codex": {}})
+        bundle = (analytics_provider() if analytics_provider
+                  else {"claude": {}, "codex": {}})
+        _now, _rows, _usage, _stale, cap = _collect()
+        if isinstance(bundle, dict):
+            bundle = dict(bundle)
+            bundle["capacity"] = cap
+        return jsonify(bundle)
+
+    @app.get("/costs")
+    @require_token
+    def costs():
+        """Today's per-(tool, project) token attribution + optional $ estimate, sorted
+        by tokens desc. Computed on a slow loop and cached; empty bundle if unconfigured."""
+        return jsonify(costs_provider() if costs_provider
+                       else {"today": [], "totalTokens": 0, "totalUsd": None})
 
     @app.post("/ack")
     @require_token

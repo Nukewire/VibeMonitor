@@ -118,6 +118,43 @@ def daily_history(samples: list[dict], days: int = 14, localize=time.localtime,
     return out[-days:]
 
 
+def capacity(usage: dict, analytics: dict, counts: dict,
+             pace_pct: float = 0.7) -> dict:
+    """Advise whether it's safe to start another agent, from current usage + projection.
+
+    - ``throttle`` if any provider is projected to exhaust before its window resets.
+    - ``pace`` if utilization is moderate (any provider pct > ~``pace_pct``) and not exhausting.
+    - ``go`` otherwise — message nudges using idle capacity.
+    """
+    usage = usage or {}
+    analytics = analytics or {}
+    counts = counts or {}
+    idle = int(counts.get("idle", 0) or 0)
+
+    exhausting = []
+    max_pct = 0.0
+    for prov in ("claude", "codex"):
+        u = usage.get(prov) or {}
+        a = analytics.get(prov) or {}
+        if a.get("willExhaustBeforeReset") or u.get("willExhaustBeforeReset"):
+            exhausting.append(prov)
+        pct = u.get("pct")
+        if isinstance(pct, (int, float)):
+            max_pct = max(max_pct, float(pct))
+
+    if exhausting:
+        who = " & ".join(sorted(exhausting))
+        return {"status": "throttle",
+                "message": f"{who} will cap out before reset — hold off on new work"}
+    if max_pct > pace_pct:
+        return {"status": "pace",
+                "message": f"Budget tight ({round(max_pct * 100)}% used) — pace yourself"}
+    plural = "s" if idle != 1 else ""
+    return {"status": "go",
+            "message": f"Plenty of budget · {idle} idle — safe to start another"
+                       if idle else "Plenty of budget — safe to start another"}
+
+
 def build_provider(samples: list[dict], usage: dict, now: float) -> dict:
     """Projection scalars for one provider from its recent samples + current usage.
     Sparkline samples and multi-day `daily` history are attached by the caller (they use

@@ -211,6 +211,63 @@ def test_state_does_not_mutate_store():
     assert st.get("x") is not None                          # but NOT removed (reaper owns removal)
 
 
+def test_state_includes_waiting_sec():
+    st = Store()
+    # clock=1005.0; waiting_since=1000.0 -> waitingSec = 5
+    st.upsert(Session(id="w", tool="claude", project="P", last_activity=1004.0,
+                      waiting=True, waiting_event="Stop", waiting_since=1000.0))
+    body = make_client(st).get("/state", headers=H).get_json()
+    row = next(s for s in body["sessions"] if s["project"] == "P")
+    assert row["waitingSec"] == 5
+    assert "capacity" in body                       # advisor surfaced
+
+
+def test_state_waiting_sec_null_when_not_waiting():
+    st = Store()
+    st.upsert(Session(id="a", tool="claude", project="P", last_activity=1000.0))
+    body = make_client(st).get("/state", headers=H).get_json()
+    row = next(s for s in body["sessions"] if s["project"] == "P")
+    assert row["waitingSec"] is None
+
+
+def test_state_waiting_sec_is_group_max():
+    st = Store()
+    # two waiting sessions same project; older waiting_since -> larger waitingSec wins
+    st.upsert(Session(id="a", tool="claude", project="Dup", last_activity=1004.0,
+                      waiting=True, waiting_event="Stop", waiting_since=1002.0))
+    st.upsert(Session(id="b", tool="claude", project="Dup", last_activity=1004.0,
+                      waiting=True, waiting_event="Stop", waiting_since=995.0))
+    body = make_client(st).get("/state", headers=H).get_json()
+    row = next(s for s in body["sessions"] if s["project"] == "Dup")
+    assert row["waitingSec"] == 10                  # 1005 - 995
+
+
+def test_ha_longest_waiting_and_capacity_status():
+    st = Store()
+    st.upsert(Session(id="w", tool="claude", project="P", last_activity=1004.0,
+                      waiting=True, waiting_event="Stop", waiting_since=990.0))
+    body = make_client(st).get("/ha", headers=H).get_json()
+    assert body["longest_waiting_sec"] == 15        # 1005 - 990
+    assert body["capacity_status"] in ("go", "pace", "throttle")
+
+
+def test_costs_endpoint_requires_token_and_returns_bundle():
+    bundle = {"today": [{"tool": "claude", "project": "P", "tokens": 10,
+                         "sharePct": 100.0, "usd": None}],
+              "totalTokens": 10, "totalUsd": None}
+    app = create_app(Store(), CFG, clock=lambda: 1005.0,
+                     costs_provider=lambda: bundle)
+    app.testing = True
+    c = app.test_client()
+    assert c.get("/costs").status_code == 401
+    assert c.get("/costs", headers=H).get_json()["totalTokens"] == 10
+
+
+def test_costs_endpoint_empty_without_provider():
+    body = make_client(Store()).get("/costs", headers=H).get_json()
+    assert body == {"today": [], "totalTokens": 0, "totalUsd": None}
+
+
 def test_hook_stamps_server_ts():
     st = Store()
     c = make_client(st)

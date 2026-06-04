@@ -43,3 +43,13 @@ def test_dashboard_wires_analytics_view():
     # proves the Analytics view toggle + its /analytics fetch are present in the shell
     assert "/analytics" in body
     assert "Analytics" in body
+
+
+def test_dashboard_wires_new_features():
+    body = make_client(Store()).get("/").get_data(as_text=True)
+    # proves the new feature wiring is present in the shell:
+    # spend section fetches /costs, capacity advisor reads `capacity`,
+    # and waiting-row escalation reads `waitingSec`
+    assert "/costs" in body
+    assert "capacity" in body
+    assert "waitingSec" in body

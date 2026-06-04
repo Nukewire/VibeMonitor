@@ -18,6 +18,7 @@ gone_ttl_sec    = 14400   # quiet past N s => dropped from the list (4h)
 [poll]
 sessions_sec = 2.0     # how often to rescan local session files
 usage_sec    = 60.0    # how often to refresh usage / rate-limit data
+costs_sec    = 120.0   # how often to re-tally today's per-project token attribution (GET /costs)
 
 [providers]
 claude = true
@@ -50,3 +51,20 @@ max_chars = 2000                                   # cap the prompt text sent to
 # lights/notifications. Leave unset to disable. (Tier 1 — the GET /ha sensor endpoint —
 # needs no config; it's always available behind the token.)
 # webhook_url = "http://homeassistant.local:8123/api/webhook/vibemonitor-xxxxx"
+
+[push]
+# Optional: phone push when a session starts waiting on you, with one escalation
+# re-fire once it's been waiting `escalate_sec`. Off by default (unset url/keys).
+provider     = "ntfy"          # "ntfy" | "pushover"
+# ntfy: just publish to a topic URL (keep it secret-ish; anyone with the URL can read).
+# ntfy_url   = "https://ntfy.sh/vibemon-<random>"
+# pushover: create an app token + your user key at https://pushover.net
+# pushover_token = "..."
+# pushover_user  = "..."
+escalate_sec = 600             # re-notify (priority high) after waiting this long
+
+[pricing]
+# Optional: only needed for the $ column in GET /costs. Key is a model id (substring
+# match); values are USD per 1M tokens. Omit to report tokens only (usd = null).
+# "claude-sonnet" = { input = 3.0, output = 15.0 }
+# "codex"         = { input = 2.5, output = 10.0 }

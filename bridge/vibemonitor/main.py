@@ -14,10 +14,14 @@ from vibemonitor.hub import create_app
 from vibemonitor.statemachine import derive_status, is_junk_project
 from vibemonitor.summarizer import extract_latest_prompt, summarize
 from vibemonitor.summarycache import SummaryCache, hash_text
-from vibemonitor.notifier import WebhookNotifier
+from vibemonitor.notifier import WebhookNotifier, WaitingCoordinator
 from vibemonitor.usagehistory import UsageHistory
 from vibemonitor.analyticscache import AnalyticsCache
 from vibemonitor.usageanalytics import build_provider, daily_history
+from vibemonitor.push import PushNotifier
+from vibemonitor.costs import CostCache, summarize_costs
+from vibemonitor.collector_claude import claude_projects_root
+from vibemonitor.collector_codex import codex_sessions_root
 
 _HISTORY_RETENTION_SEC = 90 * 86400        # keep ~90 days of usage samples
 _SPARK_WINDOW_SEC = 5 * 3600               # samples shown in the sparkline / used for burn
@@ -62,7 +66,8 @@ def _waiting_groups(store: Store, cfg, now: float,
 
 def _session_loop(store: Store, cfg, stop: threading.Event,
                   heartbeat: dict | None = None, notifier: WebhookNotifier | None = None,
-                  summaries: SummaryCache | None = None) -> None:
+                  summaries: SummaryCache | None = None,
+                  coordinator: WaitingCoordinator | None = None) -> None:
     while not stop.is_set():
         now = time.time()
         try:
@@ -72,8 +77,11 @@ def _session_loop(store: Store, cfg, stop: threading.Event,
                 scan_codex(store, now=now)
             for s in store.snapshot():                       # reap gone atomically here
                 store.remove_if_gone(s.id, now=now, cfg=cfg, derive=derive_status)
-            if notifier is not None:                         # HA waiting/cleared webhooks
-                notifier.update(_waiting_groups(store, cfg, now, summaries))
+            # single edge-detector fans out to HA webhook + phone push; falls back to
+            # the bare webhook for callers that still pass a notifier directly (tests).
+            sink = coordinator if coordinator is not None else notifier
+            if sink is not None:
+                sink.update(_waiting_groups(store, cfg, now, summaries))
             if heartbeat is not None:
                 heartbeat["last_scan"] = now
         except Exception as e:                               # never die silently
@@ -143,6 +151,42 @@ def _summary_loop(store: Store, summaries: SummaryCache, cfg,
         stop.wait(cfg.poll_summary_sec)
 
 
+def _claude_cost_paths() -> list[Path]:
+    root = claude_projects_root()
+    if not root.exists():
+        return []
+    return [f for projdir in root.iterdir() if projdir.is_dir()
+            for f in projdir.glob("*.jsonl")]
+
+
+def _codex_cost_paths(now: float) -> list[Path]:
+    import datetime
+    root = codex_sessions_root()
+    if not root.exists():
+        return []
+    t = datetime.date.fromtimestamp(now)
+    out: list[Path] = []
+    for d in (t, t - datetime.timedelta(days=1)):
+        day = root / f"{d.year:04d}" / f"{d.month:02d}" / f"{d.day:02d}"
+        if day.exists():
+            out.extend(day.glob("*.jsonl"))
+    return out
+
+
+def _costs_loop(cache: CostCache, cfg, stop: threading.Event) -> None:
+    """Slow loop: re-scan today's session logs and cache per-project token attribution."""
+    while not stop.is_set():
+        now = time.time()
+        try:
+            claude_paths = _claude_cost_paths() if cfg.enable_claude else []
+            codex_paths = _codex_cost_paths(now) if cfg.enable_codex else []
+            cache.set(summarize_costs(claude_paths, codex_paths, now,
+                                      pricing=cfg.pricing))
+        except Exception as e:                          # never die silently
+            print(f"[costs_loop] error (continuing): {e!r}", file=sys.stderr)
+        stop.wait(cfg.poll_costs_sec)
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = argv or sys.argv[1:]
     cfg_path = Path(argv[0]) if argv else Path("config.toml")
@@ -162,17 +206,27 @@ def main(argv: list[str] | None = None) -> int:
     summaries = SummaryCache()
     history = UsageHistory(str(cfg_path.parent / "usage_history.db"))
     analytics = AnalyticsCache()
+    costs = CostCache()
     notifier = WebhookNotifier(cfg.ha_webhook_url) if cfg.ha_webhook_url else None
     if notifier:
         print("Home Assistant webhook enabled", file=sys.stderr)  # URL holds a secret id
+    push = PushNotifier(provider=cfg.push_provider, ntfy_url=cfg.push_ntfy_url,
+                        pushover_token=cfg.push_pushover_token,
+                        pushover_user=cfg.push_pushover_user)
+    if push.configured():
+        print(f"Phone push enabled (provider={cfg.push_provider})", file=sys.stderr)
+    coordinator = WaitingCoordinator(webhook=notifier,
+                                     push=push if push.configured() else None,
+                                     escalate_sec=cfg.push_escalate_sec)
     stop = threading.Event()
     heartbeat: dict = {"last_scan": 0.0}
 
     threading.Thread(target=_session_loop,
-                     args=(store, cfg, stop, heartbeat, notifier, summaries),
+                     args=(store, cfg, stop, heartbeat, notifier, summaries, coordinator),
                      daemon=True).start()
     threading.Thread(target=_usage_loop, args=(cache, cfg, stop, history, analytics),
                      daemon=True).start()
+    threading.Thread(target=_costs_loop, args=(costs, cfg, stop), daemon=True).start()
     if cfg.summary_enabled:
         if cfg.openrouter_api_key:
             threading.Thread(target=_summary_loop, args=(store, summaries, cfg, stop),
@@ -182,7 +236,8 @@ def main(argv: list[str] | None = None) -> int:
                   file=sys.stderr)
 
     app = create_app(store, cfg, usage_provider=cache.get, heartbeat=heartbeat,
-                     summary_provider=summaries.get, analytics_provider=analytics.get)
+                     summary_provider=summaries.get, analytics_provider=analytics.get,
+                     costs_provider=costs.get)
     print(f"VibeMonitor hub on http://{cfg.host}:{cfg.port}  (Ctrl+C to stop)")
     try:
         app.run(host=cfg.host, port=cfg.port, threaded=True)
