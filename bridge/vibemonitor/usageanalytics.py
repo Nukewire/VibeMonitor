@@ -70,6 +70,7 @@ def project(current_pct: float | None, burn_per_hr: float | None,
            "predicted_at_reset": None, "leftover_pct": None}
     if current_pct is None or burn_per_hr is None or reset_sec is None:
         return out
+    current_pct = min(max(current_pct, 0.0), 1.0)        # clamp odd/over-100% readings
     predicted = current_pct + burn_per_hr * (reset_sec / 3600.0)
     out["predicted_at_reset"] = predicted
     if burn_per_hr > 0 and predicted >= 1.0:

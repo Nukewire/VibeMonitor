@@ -101,7 +101,7 @@ def create_app(store: Store, cfg: Config, usage_provider=None, clock=time.time,
                     if sp:
                         step = max(1, len(sp) // 24)
                         u["spark"] = [round((sp[i].get("pct") or 0) * 100)
-                                      for i in range(0, len(sp), step)][:24]
+                                      for i in range(0, len(sp), step)][-24:]  # keep most-recent
         last_scan = (heartbeat or {}).get("last_scan", 0.0)
         stale_sec = int(max(0.0, now - last_scan)) if last_scan else -1
         return now, out, usage, stale_sec

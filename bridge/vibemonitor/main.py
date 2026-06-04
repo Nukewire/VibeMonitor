@@ -25,12 +25,13 @@ _DAILY_WINDOW_SEC = 14 * 86400             # span for the per-day history
 
 
 def _downsample(samples: list[dict], n: int = 80) -> list[dict]:
-    """Thin a sample list to at most n points (keep ts+pct) for a compact sparkline."""
+    """Thin a sample list to at most n points (keep ts+pct) for a compact sparkline.
+    Always includes the first and last sample so the trend's most-recent point is shown."""
     if len(samples) <= n:
         return [{"ts": s["ts"], "pct": s["pct"]} for s in samples]
-    step = len(samples) / n
-    return [{"ts": samples[int(i * step)]["ts"], "pct": samples[int(i * step)]["pct"]}
-            for i in range(n)]
+    step = (len(samples) - 1) / (n - 1)
+    idxs = sorted({round(i * step) for i in range(n)})   # spans 0 .. len-1 inclusive
+    return [{"ts": samples[j]["ts"], "pct": samples[j]["pct"]} for j in idxs]
 
 
 def _build_analytics(history: UsageHistory, usage: dict, now: float) -> dict:
@@ -163,7 +164,7 @@ def main(argv: list[str] | None = None) -> int:
     analytics = AnalyticsCache()
     notifier = WebhookNotifier(cfg.ha_webhook_url) if cfg.ha_webhook_url else None
     if notifier:
-        print(f"Home Assistant webhook enabled -> {cfg.ha_webhook_url}", file=sys.stderr)
+        print("Home Assistant webhook enabled", file=sys.stderr)  # URL holds a secret id
     stop = threading.Event()
     heartbeat: dict = {"last_scan": 0.0}
 
@@ -187,6 +188,7 @@ def main(argv: list[str] | None = None) -> int:
         app.run(host=cfg.host, port=cfg.port, threaded=True)
     finally:
         stop.set()
+        history.close()
     return 0
 
 

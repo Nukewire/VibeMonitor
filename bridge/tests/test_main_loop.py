@@ -40,6 +40,20 @@ def test_session_loop_reaps_gone(monkeypatch):
     assert store.get("old") is None
 
 
+def test_downsample_includes_first_and_last():
+    samples = [{"ts": i, "pct": i / 1000.0} for i in range(1000)]
+    out = main_mod._downsample(samples, n=80)
+    assert len(out) <= 80
+    assert out[0]["ts"] == 0            # oldest kept
+    assert out[-1]["ts"] == 999        # most-recent kept (the bug was dropping the tail)
+    assert all(a["ts"] < b["ts"] for a, b in zip(out, out[1:]))   # strictly increasing
+
+
+def test_downsample_passthrough_when_small():
+    samples = [{"ts": 1, "pct": 0.1}, {"ts": 2, "pct": 0.2}]
+    assert main_mod._downsample(samples, n=80) == samples
+
+
 def _summary_cfg(**kw):
     base = dict(token="t", poll_summary_sec=0.01, working_sec=60,
                 waiting_ttl_sec=1800, gone_ttl_sec=14400,
