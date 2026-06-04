@@ -3,7 +3,6 @@
 #include "config.h"
 #include "icons.h"
 #include "settings.h"
-#include "version.h"
 #include <lvgl.h>
 #include <stdio.h>
 #include <string.h>
@@ -97,7 +96,7 @@ struct Row {
     lv_obj_t* badge;     // provider logo image (Claude / Codex)
     lv_obj_t* name;
     lv_obj_t* sym;       // status symbol at end: ! waiting / refresh working / Zzz idle
-    char id[64];
+    char id[40];
     bool waiting;
     SessStatus status;
     bool active;         // currently shown
@@ -349,22 +348,6 @@ void ui_init() {
     lv_obj_set_style_text_color(set_sleep_roller, pc(P().bg), LV_PART_SELECTED);
     lv_obj_add_event_cb(set_sleep_roller, sleep_changed, LV_EVENT_VALUE_CHANGED, NULL);
 
-    // Build-stamped firmware identity — dim footer at the bottom of SETTINGS,
-    // clear of the brightness/theme/sleep controls above. Two compact lines.
-    lv_obj_t* set_ver_lbl = lv_label_create(tab_set);
-    lv_obj_set_style_text_font(set_ver_lbl, &lv_font_montserrat_12, 0);
-    lv_obj_set_style_text_color(set_ver_lbl, pc(P().dim), 0);
-    lv_label_set_long_mode(set_ver_lbl, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(set_ver_lbl, SCREEN_W - 16);
-    lv_obj_set_style_text_align(set_ver_lbl, LV_TEXT_ALIGN_LEFT, 0);
-    lv_obj_align(set_ver_lbl, LV_ALIGN_BOTTOM_LEFT, 2, 0);
-    {
-        char vbuf[80];
-        snprintf(vbuf, sizeof(vbuf), "VibeMonitor v%s\n%s \xC2\xB7 %s",
-                 FW_VERSION, FW_REV, FW_BUILD_DATE);
-        lv_label_set_text(set_ver_lbl, vbuf);
-    }
-
     // ---- offline banner (top layer) ----
     offline_banner = lv_label_create(lv_layer_top());
     lv_label_set_text(offline_banner, " hub offline ");
@@ -417,9 +400,9 @@ void ui_apply_theme() {
     lv_obj_set_style_text_color(codex_lbl, pc(P().codex), 0);
     lv_obj_set_style_bg_color(codex_bar, pc(P().panel), LV_PART_MAIN);
     lv_obj_set_style_bg_color(codex_bar, pc(P().codex), LV_PART_INDICATOR);
-    // claude_proj / codex_proj colors are owned by ui_update() (from
-    // projection_text()); don't touch them here or we get a visible color
-    // flash until the next /state poll corrects them.
+    // projection lines are recolored on next poll; default to dim for the swap
+    lv_obj_set_style_text_color(claude_proj, pc(P().dim), 0);
+    lv_obj_set_style_text_color(codex_proj, pc(P().dim), 0);
     lv_obj_set_style_text_color(week_lbl, pc(P().dim), 0);
 
     // settings tab

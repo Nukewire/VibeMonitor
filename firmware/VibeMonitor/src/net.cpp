@@ -97,7 +97,7 @@ bool net_ack(const char* id) {
     http.addHeader("X-VibeMonitor-Token", g_token);
     http.addHeader("Content-Type", "application/json");
     http.setTimeout(HTTP_TIMEOUT_MS);
-    char body[96];
+    char body[80];
     snprintf(body, sizeof(body), "{\"id\":\"%s\"}", id);
     int code = http.POST((uint8_t*)body, strlen(body));
     http.end();

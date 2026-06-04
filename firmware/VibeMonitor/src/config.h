@@ -14,7 +14,7 @@
 #define TOUCH_IRQ      36
 
 #define MAX_SESSIONS   24
-#define MAX_PROJ_LEN   48
+#define MAX_PROJ_LEN   24
 #define POLL_MS      1500
 #define HTTP_TIMEOUT_MS 4000
 

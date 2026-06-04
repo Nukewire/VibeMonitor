@@ -5,7 +5,7 @@
 enum SessStatus { ST_IDLE, ST_WORKING, ST_WAITING };
 
 struct Session {
-    char id[64];
+    char id[40];
     char project[MAX_PROJ_LEN];
     char tool[8];           // "claude" / "codex"
     SessStatus status;
