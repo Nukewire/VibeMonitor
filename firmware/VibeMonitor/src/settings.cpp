@@ -89,9 +89,9 @@ static bool     s_dark       = true;
 static uint16_t s_sleep_min  = 0;     // minutes, 0 = never
 
 static uint8_t clamp_bright(uint8_t v) {
-    if (v < 30)  return 30;   // floor: 30% — below this the dark theme reads as a black
-    if (v > 100) return 100;  // screen, which looks like a dead device. Re-clamps on load,
-    return v;                 // so any previously-saved too-low value is rescued at boot.
+    if (v < 10)  return 10;
+    if (v > 100) return 100;
+    return v;
 }
 
 // snap to one of the supported sleep options

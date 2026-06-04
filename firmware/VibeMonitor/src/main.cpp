@@ -18,9 +18,6 @@ static uint32_t last_tick = 0;
 // ---- display sleep (backlight blanking) ----
 static uint32_t last_activity = 0;   // millis() of last touch / waiting session
 static bool     sleeping      = false;
-// "Sleep" dims to a low level rather than cutting the backlight to 0, so the screen is
-// never fully black / mistakable for a dead device, and is always tap-to-wake.
-static const uint8_t SLEEP_DIM_PCT = 4;
 
 static void on_ack(const char* id) {
     net_ack(id);
@@ -127,7 +124,7 @@ void loop() {
             uint32_t sleep_ms = (uint32_t)sleep_min * 60UL * 1000UL;
             if (now - last_activity >= sleep_ms) {
                 sleeping = true;
-                backlight_set(SLEEP_DIM_PCT);     // dim, not fully off
+                backlight_set(0);     // backlight off
             }
         }
     }
