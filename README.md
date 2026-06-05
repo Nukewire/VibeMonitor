@@ -80,6 +80,8 @@ cp config.example.toml config.toml          # then edit config.toml and set a ra
 python -m vibemonitor.main config.toml       # starts the hub (default http://0.0.0.0:5151)
 ```
 
+First-time setup: `python -m vibemonitor.setup` (a guided web wizard).
+
 The Claude OAuth token used for the usage gauge is auto-read from `~/.claude/.credentials.json` on **Windows and Linux**; you only set `[claude] oauth_token` in `config.toml` to override it. On **macOS** Claude Code keeps that token in the system Keychain rather than a file, so the bridge can't auto-read it — set `[claude] oauth_token` manually there (see [Platform support](#platform-support)).
 
 ### Install the Claude Code hooks (instant "waiting" alerts)

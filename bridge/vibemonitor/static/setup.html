@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>VibeMonitor — Setup</title>
+<style>
+  :root{
+    --bg:#141414; --panel:#2B2B2B; --text:#EDEDED; --dim:#8A8A8A;
+    --accent:#D97757; --ok:#4ADE80; --bad:#E5484D; --line:#3a3a3a;
+    --radius:16px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    background:var(--bg); color:var(--text); min-height:100vh;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased; line-height:1.45;
+  }
+  .wrap{max-width:680px; margin:0 auto; padding:28px 18px 80px}
+  h1{font-size:24px; margin:0 0 4px; font-weight:700}
+  .sub{color:var(--dim); font-size:14px; margin:0 0 22px}
+  .steps{display:flex; gap:6px; margin-bottom:20px; flex-wrap:wrap}
+  .pip{
+    flex:1 1 0; min-width:60px; height:5px; border-radius:99px;
+    background:rgba(255,255,255,.08);
+  }
+  .pip.done{background:var(--accent)}
+  .panel{
+    background:var(--panel); border-radius:var(--radius); padding:22px 22px 18px;
+    margin-bottom:18px; display:none;
+  }
+  .panel.active{display:block}
+  .panel h2{font-size:17px; margin:0 0 4px}
+  .panel .hint{color:var(--dim); font-size:13px; margin:0 0 16px}
+  label{display:block; font-size:13px; font-weight:600; margin:14px 0 5px}
+  label .opt{color:var(--dim); font-weight:500}
+  input[type=text], input[type=number], select{
+    width:100%; background:#1d1d1d; border:1px solid var(--line); color:var(--text);
+    border-radius:10px; padding:10px 12px; font-size:14px; font-family:inherit;
+  }
+  input:focus, select:focus{outline:none; border-color:var(--accent)}
+  .row{display:flex; gap:10px; align-items:flex-end}
+  .row > *{flex:1}
+  .row .narrow{flex:0 0 120px}
+  .toggle{display:flex; align-items:center; gap:10px; margin:14px 0 4px; cursor:pointer}
+  .toggle input{width:auto}
+  .toggle span{font-size:14px; font-weight:600}
+  button{
+    background:var(--accent); color:#1a1a1a; border:0; border-radius:10px;
+    padding:10px 16px; font-size:14px; font-weight:700; cursor:pointer; font-family:inherit;
+  }
+  button.ghost{background:transparent; color:var(--text); border:1px solid var(--line); font-weight:600}
+  button:disabled{opacity:.5; cursor:default}
+  button:active{transform:translateY(1px)}
+  .inline-btn{padding:8px 12px; font-size:13px}
+  .nav{display:flex; justify-content:space-between; gap:10px; margin-top:8px}
+  .testresult{font-size:13px; font-weight:700; margin-left:8px}
+  .testresult.ok{color:var(--ok)}
+  .testresult.bad{color:var(--bad)}
+  .sub-section{margin-top:6px; padding-top:6px}
+  .hidden{display:none}
+  pre{
+    background:#1b1b1b; border:1px solid var(--line); border-radius:10px;
+    padding:14px; overflow:auto; font-size:12px; line-height:1.4;
+    font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; white-space:pre;
+    max-height:280px;
+  }
+  .copywrap{position:relative}
+  .copybtn{position:absolute; top:8px; right:8px; padding:5px 10px; font-size:12px}
+  .success h2{color:var(--ok)}
+  .pathbox{
+    background:#1b1b1b; border:1px solid var(--line); border-radius:10px;
+    padding:10px 12px; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:13px;
+    word-break:break-all; margin-bottom:8px;
+  }
+  ul.steps-list{margin:8px 0 0; padding-left:18px}
+  ul.steps-list li{margin:6px 0; font-size:14px}
+  ul.steps-list code{background:#1b1b1b; padding:2px 6px; border-radius:6px; font-size:13px}
+  .warn{
+    background:rgba(245,166,35,.12); color:#F5C26B; border-radius:10px;
+    padding:9px 12px; font-size:13px; font-weight:600; margin:0 0 14px; display:none;
+  }
+  .warn.show{display:block}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>VibeMonitor setup</h1>
+  <p class="sub">A guided wizard — fill the form, we write <code>config.toml</code> for you. No hand-editing TOML.</p>
+
+  <div class="steps" id="pips"></div>
+
+  <div id="overwriteWarn" class="warn">A <code>config.toml</code> already exists. Saving will back it up to <code>config.toml.bak</code> and overwrite it.</div>
+
+  <!-- STEP 1 -->
+  <section class="panel active" data-step="1">
+    <h2>1 · Basics</h2>
+    <p class="hint">The shared secret your device sends on every request, plus where the hub listens.</p>
+    <label>Shared token</label>
+    <div class="row">
+      <input type="text" id="token" autocomplete="off">
+      <button type="button" class="ghost inline-btn narrow" id="regen">Regenerate</button>
+    </div>
+    <div class="row">
+      <div>
+        <label>Host</label>
+        <input type="text" id="host" value="0.0.0.0">
+      </div>
+      <div class="narrow">
+        <label>Port</label>
+        <input type="number" id="port" value="5151">
+      </div>
+    </div>
+    <label class="toggle"><input type="checkbox" id="enable_claude" checked><span>Monitor Claude Code sessions</span></label>
+    <label class="toggle"><input type="checkbox" id="enable_codex" checked><span>Monitor Codex sessions</span></label>
+    <div class="nav"><span></span><button type="button" class="next">Next</button></div>
+  </section>
+
+  <!-- STEP 2 -->
+  <section class="panel" data-step="2">
+    <h2>2 · Summaries <span class="opt" style="font-weight:500;color:var(--dim)">(optional)</span></h2>
+    <p class="hint">AI one-line "what is this session working on" labels via OpenRouter. The latest prompt text is sent to a third party, so it is off by default.</p>
+    <label class="toggle"><input type="checkbox" id="summary_enabled"><span>Enable AI summaries</span></label>
+    <div id="summaryFields" class="sub-section hidden">
+      <label>OpenRouter API key</label>
+      <input type="text" id="openrouter_api_key" autocomplete="off" placeholder="sk-or-v1-...">
+      <label>Model</label>
+      <input type="text" id="summary_model" value="google/gemma-4-31b-it:free">
+      <div class="nav" style="justify-content:flex-start; margin-top:12px">
+        <button type="button" class="ghost inline-btn" id="testOR">Test key</button>
+        <span class="testresult" id="orResult"></span>
+      </div>
+    </div>
+    <div class="nav"><button type="button" class="ghost back">Back</button><button type="button" class="next">Next</button></div>
+  </section>
+
+  <!-- STEP 3 -->
+  <section class="panel" data-step="3">
+    <h2>3 · Phone push <span class="opt" style="font-weight:500;color:var(--dim)">(optional)</span></h2>
+    <p class="hint">Get a phone push when a session starts waiting on you.</p>
+    <label>Provider</label>
+    <select id="push_provider">
+      <option value="">None</option>
+      <option value="ntfy">ntfy</option>
+      <option value="pushover">Pushover</option>
+    </select>
+    <div id="ntfyFields" class="sub-section hidden">
+      <label>ntfy topic URL</label>
+      <input type="text" id="push_ntfy_url" autocomplete="off">
+      <div class="nav" style="justify-content:flex-start; margin-top:12px">
+        <button type="button" class="ghost inline-btn" id="testNtfy">Send test push</button>
+        <span class="testresult" id="ntfyResult"></span>
+      </div>
+    </div>
+    <div id="pushoverFields" class="sub-section hidden">
+      <label>Pushover app token</label>
+      <input type="text" id="push_pushover_token" autocomplete="off">
+      <label>Pushover user key</label>
+      <input type="text" id="push_pushover_user" autocomplete="off">
+    </div>
+    <div class="nav"><button type="button" class="ghost back">Back</button><button type="button" class="next">Next</button></div>
+  </section>
+
+  <!-- STEP 4 -->
+  <section class="panel" data-step="4">
+    <h2>4 · Home Assistant <span class="opt" style="font-weight:500;color:var(--dim)">(optional)</span></h2>
+    <p class="hint">If set, the bridge POSTs a webhook the moment a session needs you (and when it clears). Create a webhook automation in Home Assistant, then paste its URL here. You can skip this — we still show you the paste-ready YAML at the end.</p>
+    <label>Webhook URL</label>
+    <input type="text" id="ha_webhook_url" autocomplete="off" placeholder="http://homeassistant.local:8123/api/webhook/vibemonitor-xxxxx">
+    <div class="nav"><button type="button" class="ghost back">Back</button><button type="button" class="next">Next</button></div>
+  </section>
+
+  <!-- STEP 5 -->
+  <section class="panel" data-step="5">
+    <h2>5 · Finish</h2>
+    <p class="hint">Write <code>config.toml</code> and (if Claude is enabled) install the Claude Code hooks.</p>
+    <div class="nav"><button type="button" class="ghost back">Back</button><button type="button" id="saveBtn">Save &amp; install</button></div>
+    <p class="testresult" id="saveStatus" style="margin-left:0; margin-top:12px"></p>
+  </section>
+
+  <!-- SUCCESS -->
+  <section class="panel success" id="successPanel">
+    <h2>✓ Saved</h2>
+    <p class="hint">Config written to:</p>
+    <div class="pathbox" id="savedPath"></div>
+    <p class="hint" id="hooksMsg"></p>
+
+    <h2 style="color:var(--text); margin-top:18px">Home Assistant — sensor &amp; entities</h2>
+    <p class="hint">Paste into <code>configuration.yaml</code>.</p>
+    <div class="copywrap">
+      <button type="button" class="copybtn ghost" data-copy="haSensor">Copy</button>
+      <pre id="haSensor"></pre>
+    </div>
+
+    <h2 style="color:var(--text); margin-top:18px">Home Assistant — webhook automation</h2>
+    <div class="copywrap">
+      <button type="button" class="copybtn ghost" data-copy="haAuto">Copy</button>
+      <pre id="haAuto"></pre>
+    </div>
+
+    <h2 style="color:var(--text); margin-top:18px">Next steps</h2>
+    <ul class="steps-list" id="nextSteps"></ul>
+  </section>
+</div>
+
+<script>
+"use strict";
+const TOTAL = 5;
+let step = 1;
+let defaults = {};
+
+const $ = (id) => document.getElementById(id);
+
+function renderPips(){
+  const pips = $("pips");
+  pips.innerHTML = "";
+  for (let i = 1; i <= TOTAL; i++){
+    const d = document.createElement("div");
+    d.className = "pip" + (i <= step ? " done" : "");
+    pips.appendChild(d);
+  }
+}
+function show(n){
+  step = n;
+  document.querySelectorAll(".panel[data-step]").forEach(p => {
+    p.classList.toggle("active", Number(p.dataset.step) === n);
+  });
+  renderPips();
+  window.scrollTo({top:0, behavior:"smooth"});
+}
+
+document.querySelectorAll(".next").forEach(b => b.onclick = () => show(Math.min(TOTAL, step+1)));
+document.querySelectorAll(".back").forEach(b => b.onclick = () => show(Math.max(1, step-1)));
+
+$("regen").onclick = async () => {
+  try {
+    const r = await fetch("/api/defaults");
+    const j = await r.json();
+    $("token").value = j.token;
+  } catch(e){}
+};
+
+// step 2 toggle
+$("summary_enabled").onchange = (e) => {
+  $("summaryFields").classList.toggle("hidden", !e.target.checked);
+};
+// step 3 provider switch
+$("push_provider").onchange = (e) => {
+  const v = e.target.value;
+  $("ntfyFields").classList.toggle("hidden", v !== "ntfy");
+  $("pushoverFields").classList.toggle("hidden", v !== "pushover");
+};
+
+function setResult(elId, ok, okText, badText){
+  const el = $(elId);
+  el.className = "testresult " + (ok ? "ok" : "bad");
+  el.textContent = ok ? (okText || "✓ works") : (badText || "✗ failed");
+}
+
+$("testOR").onclick = async () => {
+  $("orResult").textContent = "testing…"; $("orResult").className = "testresult";
+  try {
+    const r = await fetch("/api/test-openrouter", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({api_key:$("openrouter_api_key").value, model:$("summary_model").value})
+    });
+    const j = await r.json();
+    setResult("orResult", j.ok, "✓ key works", "✗ no response");
+  } catch(e){ setResult("orResult", false); }
+};
+
+$("testNtfy").onclick = async () => {
+  $("ntfyResult").textContent = "sending…"; $("ntfyResult").className = "testresult";
+  try {
+    const r = await fetch("/api/test-ntfy", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ntfy_url:$("push_ntfy_url").value})
+    });
+    const j = await r.json();
+    setResult("ntfyResult", j.ok, "✓ sent — check your phone", "✗ failed");
+  } catch(e){ setResult("ntfyResult", false); }
+};
+
+function collectForm(){
+  return {
+    token: $("token").value.trim(),
+    host: $("host").value.trim(),
+    port: $("port").value,
+    local_ip: defaults.local_ip || "",
+    enable_claude: $("enable_claude").checked,
+    enable_codex: $("enable_codex").checked,
+    summary_enabled: $("summary_enabled").checked,
+    openrouter_api_key: $("openrouter_api_key").value.trim(),
+    summary_model: $("summary_model").value.trim(),
+    push_provider: $("push_provider").value,
+    push_ntfy_url: $("push_ntfy_url").value.trim(),
+    push_pushover_token: $("push_pushover_token").value.trim(),
+    push_pushover_user: $("push_pushover_user").value.trim(),
+    ha_webhook_url: $("ha_webhook_url").value.trim(),
+  };
+}
+
+$("saveBtn").onclick = async () => {
+  const btn = $("saveBtn");
+  btn.disabled = true;
+  $("saveStatus").className = "testresult"; $("saveStatus").textContent = "saving…";
+  const form = collectForm();
+  try {
+    const r = await fetch("/api/save", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify(form)
+    });
+    const j = await r.json();
+    if (!j.ok){ throw new Error(j.error || "save failed"); }
+
+    let hooksMsg = "";
+    if (form.enable_claude){
+      try {
+        const hr = await fetch("/api/install-hooks", {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({token:form.token, url:`http://localhost:${form.port||5151}/hook`})
+        });
+        const hj = await hr.json();
+        hooksMsg = hj.message || "";
+      } catch(e){ hooksMsg = "Hook install failed: " + e.message; }
+    }
+
+    // populate success screen with textContent (no HTML injection of echoed values)
+    $("savedPath").textContent = j.path;
+    $("hooksMsg").textContent = hooksMsg;
+    $("haSensor").textContent = j.ha.sensor;
+    $("haAuto").textContent = j.ha.automation;
+    const ul = $("nextSteps");
+    ul.innerHTML = "";
+    (j.next_steps || []).forEach(s => {
+      const li = document.createElement("li");
+      li.textContent = s;
+      ul.appendChild(li);
+    });
+
+    document.querySelectorAll(".panel[data-step]").forEach(p => p.classList.remove("active"));
+    $("successPanel").classList.add("active");
+    step = TOTAL; renderPips();
+    window.scrollTo({top:0, behavior:"smooth"});
+  } catch(e){
+    $("saveStatus").className = "testresult bad";
+    $("saveStatus").textContent = "✗ " + e.message;
+    btn.disabled = false;
+  }
+};
+
+document.querySelectorAll(".copybtn").forEach(b => {
+  b.onclick = async () => {
+    const txt = $(b.dataset.copy).textContent;
+    try { await navigator.clipboard.writeText(txt); b.textContent = "Copied!"; }
+    catch(e){ b.textContent = "Copy failed"; }
+    setTimeout(() => { b.textContent = "Copy"; }, 1500);
+  };
+});
+
+(async function init(){
+  renderPips();
+  try {
+    const r = await fetch("/api/defaults");
+    defaults = await r.json();
+    $("token").value = defaults.token || "";
+    if (defaults.port) $("port").value = defaults.port;
+    if (defaults.ntfy_topic) $("push_ntfy_url").value = "https://ntfy.sh/" + defaults.ntfy_topic;
+    if (defaults.config_exists) $("overwriteWarn").classList.add("show");
+  } catch(e){}
+})();
+</script>
+</body>
+</html>
