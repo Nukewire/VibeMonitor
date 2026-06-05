@@ -55,7 +55,15 @@
   button:disabled{opacity:.5; cursor:default}
   button:active{transform:translateY(1px)}
   .inline-btn{padding:8px 12px; font-size:13px}
-  .nav{display:flex; justify-content:space-between; gap:10px; margin-top:8px}
+  .nav{display:flex; justify-content:space-between; gap:10px; margin-top:8px; align-items:center}
+  .nav .grow{flex:1}
+  .nav-right{display:flex; gap:8px; align-items:center}
+  .skipfinish{
+    background:transparent; border:0; color:var(--dim); font-size:12px; font-weight:600;
+    text-decoration:underline; cursor:pointer; padding:6px 4px; font-family:inherit;
+  }
+  .skipfinish:hover{color:var(--text)}
+  .optbadge{font-weight:500; color:var(--dim)}
   .testresult{font-size:13px; font-weight:700; margin-left:8px}
   .testresult.ok{color:var(--ok)}
   .testresult.bad{color:var(--bad)}
@@ -88,7 +96,7 @@
 <body>
 <div class="wrap">
   <h1>VibeMonitor setup</h1>
-  <p class="sub">A guided wizard — fill the form, we write <code>config.toml</code> for you. No hand-editing TOML.</p>
+  <p class="sub">A guided wizard — fill the form, we write <code>config.toml</code> for you. Only the basics (token + which providers to watch) are required; every other step is optional and can be skipped. No hand-editing TOML.</p>
 
   <div class="steps" id="pips"></div>
 
@@ -115,13 +123,20 @@
     </div>
     <label class="toggle"><input type="checkbox" id="enable_claude" checked><span>Monitor Claude Code sessions</span></label>
     <label class="toggle"><input type="checkbox" id="enable_codex" checked><span>Monitor Codex sessions</span></label>
-    <div class="nav"><span></span><button type="button" class="next">Next</button></div>
+    <p class="hint" style="margin:14px 0 0">That is everything required. The next four steps are optional — skip any of them, or jump straight to saving.</p>
+    <div class="nav">
+      <span class="grow"></span>
+      <div class="nav-right">
+        <button type="button" class="skipfinish gofinish">Skip to finish / Save now</button>
+        <button type="button" class="next">Next</button>
+      </div>
+    </div>
   </section>
 
   <!-- STEP 2 -->
   <section class="panel" data-step="2">
-    <h2>2 · Summaries <span class="opt" style="font-weight:500;color:var(--dim)">(optional)</span></h2>
-    <p class="hint">AI one-line "what is this session working on" labels via OpenRouter. The latest prompt text is sent to a third party, so it is off by default.</p>
+    <h2>2 · Summaries <span class="optbadge">— optional</span></h2>
+    <p class="hint">AI one-line "what is this session working on" labels via OpenRouter. The latest prompt text is sent to a third party, so it is off by default. Skip this to leave summaries disabled.</p>
     <label class="toggle"><input type="checkbox" id="summary_enabled"><span>Enable AI summaries</span></label>
     <div id="summaryFields" class="sub-section hidden">
       <label>OpenRouter API key</label>
@@ -133,13 +148,20 @@
         <span class="testresult" id="orResult"></span>
       </div>
     </div>
-    <div class="nav"><button type="button" class="ghost back">Back</button><button type="button" class="next">Next</button></div>
+    <div class="nav">
+      <button type="button" class="ghost back">Back</button>
+      <div class="nav-right">
+        <button type="button" class="skipfinish gofinish">Skip to finish / Save now</button>
+        <button type="button" class="ghost skip" data-clear="summary">Skip</button>
+        <button type="button" class="next">Next</button>
+      </div>
+    </div>
   </section>
 
   <!-- STEP 3 -->
   <section class="panel" data-step="3">
-    <h2>3 · Phone push <span class="opt" style="font-weight:500;color:var(--dim)">(optional)</span></h2>
-    <p class="hint">Get a phone push when a session starts waiting on you.</p>
+    <h2>3 · Phone push <span class="optbadge">— optional</span></h2>
+    <p class="hint">Get a phone push when a session starts waiting on you. Leave the provider on "None" (or skip) to disable.</p>
     <label>Provider</label>
     <select id="push_provider">
       <option value="">None</option>
@@ -160,16 +182,30 @@
       <label>Pushover user key</label>
       <input type="text" id="push_pushover_user" autocomplete="off">
     </div>
-    <div class="nav"><button type="button" class="ghost back">Back</button><button type="button" class="next">Next</button></div>
+    <div class="nav">
+      <button type="button" class="ghost back">Back</button>
+      <div class="nav-right">
+        <button type="button" class="skipfinish gofinish">Skip to finish / Save now</button>
+        <button type="button" class="ghost skip" data-clear="push">Skip</button>
+        <button type="button" class="next">Next</button>
+      </div>
+    </div>
   </section>
 
   <!-- STEP 4 -->
   <section class="panel" data-step="4">
-    <h2>4 · Home Assistant <span class="opt" style="font-weight:500;color:var(--dim)">(optional)</span></h2>
+    <h2>4 · Home Assistant <span class="optbadge">— optional</span></h2>
     <p class="hint">If set, the bridge POSTs a webhook the moment a session needs you (and when it clears). Create a webhook automation in Home Assistant, then paste its URL here. You can skip this — we still show you the paste-ready YAML at the end.</p>
     <label>Webhook URL</label>
     <input type="text" id="ha_webhook_url" autocomplete="off" placeholder="http://homeassistant.local:8123/api/webhook/vibemonitor-xxxxx">
-    <div class="nav"><button type="button" class="ghost back">Back</button><button type="button" class="next">Next</button></div>
+    <div class="nav">
+      <button type="button" class="ghost back">Back</button>
+      <div class="nav-right">
+        <button type="button" class="skipfinish gofinish">Skip to finish / Save now</button>
+        <button type="button" class="ghost skip" data-clear="ha">Skip</button>
+        <button type="button" class="next">Next</button>
+      </div>
+    </div>
   </section>
 
   <!-- STEP 5 -->
@@ -233,6 +269,31 @@ function show(n){
 
 document.querySelectorAll(".next").forEach(b => b.onclick = () => show(Math.min(TOTAL, step+1)));
 document.querySelectorAll(".back").forEach(b => b.onclick = () => show(Math.max(1, step-1)));
+
+// "Skip to finish / Save now" — jump straight to the Finish step from any optional step.
+document.querySelectorAll(".gofinish").forEach(b => b.onclick = () => show(TOTAL));
+
+// "Skip" — clear this optional section's inputs (so nothing is emitted) and advance.
+function clearSection(name){
+  if (name === "summary"){
+    $("summary_enabled").checked = false;
+    $("summaryFields").classList.add("hidden");
+    $("openrouter_api_key").value = "";
+  } else if (name === "push"){
+    $("push_provider").value = "";
+    $("ntfyFields").classList.add("hidden");
+    $("pushoverFields").classList.add("hidden");
+    $("push_ntfy_url").value = "";
+    $("push_pushover_token").value = "";
+    $("push_pushover_user").value = "";
+  } else if (name === "ha"){
+    $("ha_webhook_url").value = "";
+  }
+}
+document.querySelectorAll(".skip").forEach(b => b.onclick = () => {
+  clearSection(b.dataset.clear);
+  show(Math.min(TOTAL, step+1));
+});
 
 $("regen").onclick = async () => {
   try {

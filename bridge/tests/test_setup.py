@@ -76,6 +76,57 @@ def test_build_toml_omits_disabled_sections():
     assert "pricing" not in data
 
 
+def test_build_toml_minimal_only_token_and_providers():
+    """All optional features off → a minimal but valid config with no optional
+    sections. This is the 'skip everything' path from the wizard."""
+    form = {
+        "token": "minimal-tok",
+        "host": "0.0.0.0",
+        "port": 5151,
+        "enable_claude": True,
+        "enable_codex": True,
+        # everything optional deliberately absent / falsy:
+        "summary_enabled": False,
+        "openrouter_api_key": "",
+        "ha_webhook_url": "",
+        "push_provider": "",
+        "push_ntfy_url": "",
+        "push_pushover_token": "",
+        "push_pushover_user": "",
+    }
+    text = setup.build_toml(form)
+    data = tomllib.loads(text)  # must parse
+    # required pieces present
+    assert data["token"] == "minimal-tok"
+    assert data["host"] == "0.0.0.0"
+    assert data["port"] == 5151
+    assert data["providers"]["claude"] is True
+    assert data["providers"]["codex"] is True
+    assert data["thresholds"]["working_sec"] == 60
+    assert data["poll"]["sessions_sec"] == 2.0
+    # NO optional sections emitted
+    for section in ("summary", "openrouter", "push", "homeassistant", "pricing"):
+        assert section not in data, f"{section} should be omitted in minimal config"
+
+
+def test_build_toml_minimal_loads_via_config_loader(tmp_path):
+    """The minimal 'skip everything' config must be accepted by load_config."""
+    form = {"token": "min-tok", "enable_claude": True, "enable_codex": True}
+    p = tmp_path / "config.toml"
+    p.write_text(setup.build_toml(form), encoding="utf-8")
+    cfg = load_config(p)
+    assert cfg.token == "min-tok"
+    assert cfg.enable_claude is True
+    assert cfg.enable_codex is True
+    # optional features defaulted off / empty
+    assert cfg.summary_enabled is False
+    assert cfg.openrouter_api_key is None
+    assert cfg.ha_webhook_url is None
+    assert cfg.push_ntfy_url is None
+    assert cfg.push_pushover_token is None
+    assert cfg.pricing == {}
+
+
 def test_build_toml_pushover_section():
     form = {
         "token": "t",
@@ -177,6 +228,38 @@ def test_save_writes_config_to_injected_path(client):
     # ha snippets prefilled with the device ip + port
     assert "10.0.0.7:5151/ha" in j["ha"]["sensor"]
     assert any("vibemonitor.main" in s for s in j["next_steps"])
+
+
+def test_save_minimal_form_writes_loadable_config(client):
+    """A minimal save (token + providers, every optional feature skipped/blank)
+    must write a config that load_config accepts, with no optional sections."""
+    app, c = client
+    target = Path(app.config["CONFIG_PATH"])
+    form = {
+        "token": "skip-all-tok",
+        "host": "0.0.0.0",
+        "port": 5151,
+        "enable_claude": True,
+        "enable_codex": True,
+        "summary_enabled": False,
+        "openrouter_api_key": "",
+        "ha_webhook_url": "",
+        "push_provider": "",
+        "push_ntfy_url": "",
+        "push_pushover_token": "",
+        "push_pushover_user": "",
+    }
+    r = c.post("/api/save", json=form)
+    j = r.get_json()
+    assert j["ok"] is True
+    assert target.exists()
+    data = tomllib.loads(target.read_text(encoding="utf-8"))
+    for section in ("summary", "openrouter", "push", "homeassistant", "pricing"):
+        assert section not in data
+    cfg = load_config(target)
+    assert cfg.token == "skip-all-tok"
+    assert cfg.summary_enabled is False
+    assert cfg.push_ntfy_url is None
 
 
 def test_save_backs_up_existing_config(client):
