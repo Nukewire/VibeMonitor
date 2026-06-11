@@ -42,3 +42,6 @@ _vm_probe.txt
 # --- OS cruft ---
 .DS_Store
 Thumbs.db
+
+# --- Local browser-automation artifacts (may contain real session data) ---
+.playwright-mcp/

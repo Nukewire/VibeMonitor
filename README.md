@@ -24,6 +24,10 @@ VibeMonitor turns a ~$15 ESP32 touchscreen into an ambient status panel for your
 - **AI session summaries** *(optional)* — a one-line "what they're working on" per session (e.g. *"Refactor auth middleware"*), generated from the latest prompt by a cheap model via [OpenRouter](https://openrouter.ai). Opt-in. See [Session summaries](#session-summaries-optional).
 - **Web dashboard** — the bridge also serves the same view in a browser at `http://<bridge-host>:5151/`, so you can glance at it without the hardware. See [Web dashboard](#web-dashboard).
 - **On-device settings** — tap the **SETTINGS** tab to adjust screen **brightness**, switch **light/dark theme**, and set a **sleep** timeout (blank the display after N minutes with nothing waiting; tap to wake). Saved on the device.
+- **Usage analytics** — burn-rate projection (*"out ~3:40 PM"* vs *"resets first · 35% to spare"*), both reset clocks, and daily peak history. See [Usage analytics](#usage-analytics).
+- **Capacity advisor** — a go/pace/throttle banner answering *"can I start another agent right now?"*. See [Capacity advisor](#capacity-advisor).
+- **Phone push** *(optional)* — ntfy or Pushover notification when a session starts waiting on you, with one high-priority escalation if it stays unanswered. See [Phone push notifications](#phone-push-notifications-optional).
+- **Cost attribution** — today's token usage per project (with optional $ estimates), so you know which project is eating the budget. See [Cost attribution](#cost-attribution-per-project-usage).
 - **Home Assistant** *(optional)* — a flat `GET /ha` sensor endpoint plus an outbound webhook that fires when a session needs you (and when it clears), so you can drive lights/notifications. See [Home Assistant](#home-assistant).
 
 ## Architecture
@@ -112,6 +116,10 @@ enabled, flags the bridge as offline/stalled if it stops responding, and lets yo
 row to acknowledge it — exactly like tapping the device. A header link opens an **Analytics**
 view (see below).
 
+<p align="center">
+  <img src="docs/media/vibemonitor_dashboard.png" alt="Web dashboard — usage gauges with projections, capacity advisor, waiting-first session list" width="80%">
+</p>
+
 ## Usage analytics
 
 VibeMonitor turns the usage gauge from "how much is left" into "what should I do about it."
@@ -133,6 +141,71 @@ recent burn — i.e. *"if you keep developing at this rate."*
 
 API: **`GET /analytics`** (token) returns the full bundle (per-provider projection, sparkline
 `samples`, and `daily` history); `/state` and `/ha` carry the compact projection fields too.
+
+<p align="center">
+  <img src="docs/media/vibemonitor_analytics.png" alt="Analytics view — weekly reset clock, per-provider trend and daily-peak charts, today's usage by project" width="80%">
+</p>
+
+## Capacity advisor
+
+A one-line answer to *"can I start another agent right now?"*, derived from current usage,
+the burn-rate projection, and how many sessions are idle:
+
+- **go** — *"Plenty of budget · 3 idle — safe to start another"*
+- **pace** — *"Budget tight (78% used) — pace yourself"* (any provider above ~70%)
+- **throttle** — *"claude will cap out before reset — hold off on new work"* (projected to
+  exhaust before the window resets)
+
+It shows as a colored banner at the top of the web dashboard and rides along in `/state`,
+`/analytics`, and `/ha` (`capacity_status`) so automations can use it. No configuration —
+it's always computed.
+
+## Phone push notifications (optional)
+
+The bridge can push to your phone when a session starts **waiting on you**, with one
+**escalation** re-fire (high priority) if it's still waiting after `escalate_sec` —
+so a permission prompt you missed at your desk finds you in the kitchen. Two providers:
+
+```toml
+[push]
+provider     = "ntfy"                          # "ntfy" | "pushover"
+ntfy_url     = "https://ntfy.sh/vibemon-<random>"   # ntfy: subscribe to this topic in the app
+escalate_sec = 600                             # re-notify (high priority) after waiting this long
+```
+
+or with [Pushover](https://pushover.net):
+
+```toml
+[push]
+provider       = "pushover"
+pushover_token = "..."        # app token
+pushover_user  = "..."        # your user key
+```
+
+Pushes are edge-triggered (one on enter-waiting, at most one escalation per wait) and
+best-effort — network errors are swallowed and never disrupt the poll loop. Off by default;
+unset keys = no-op. With ntfy, anyone with the topic URL can read it, so use a long random
+topic name. Project names (not prompt contents) appear in the notification text.
+
+## Cost attribution (per-project usage)
+
+*"Which project is eating my budget?"* — the bridge tallies **today's token usage per
+(tool, project)** from the local session logs (since local midnight) and serves it at
+**`GET /costs`** (token). Each row carries total tokens and its share of today's grand
+total; the dashboard's Analytics view renders it as the *"Today's usage by project"*
+breakdown.
+
+Optionally, add a `[pricing]` table to get a USD estimate per project (key is a model-id
+substring; values are USD per 1M tokens):
+
+```toml
+[pricing]
+"claude-sonnet" = { input = 3.0, output = 15.0 }
+"codex"         = { input = 2.5, output = 10.0 }
+```
+
+Without it, rows report tokens only (`usd = null`). Everything is computed locally from
+files already on disk — nothing leaves your machine.
 
 ## Session summaries (optional)
 
