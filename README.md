@@ -367,9 +367,25 @@ A few extra notes:
 - **`CLAUDE_CONFIG_DIR`:** if you've relocated your Claude config via this env var, the bridge currently still looks in the default `~/.claude` location.
 - **Auto-start at login** is OS-specific and not bundled: Windows uses a Scheduled Task, macOS a `launchd` plist, Linux a `systemd --user` service. The bridge itself is just `python -m vibemonitor.main config.toml`.
 
-## Data contract
+## Security & privacy
 
 The data endpoints (`/state`, `/ha`, `/analytics`, `/ack`, `/hook`) require the header `X-VibeMonitor-Token: <token>` (a missing or wrong token returns `401`). The dashboard shell at `GET /` is unauthenticated (it carries no data; its JS supplies the token when it fetches `/state`). The hub binds to the LAN; the token is the only gate, which is appropriate for a desk toy on a trusted network. No provider secrets are ever sent to the device — they stay on the PC.
+
+Everything is local by design:
+
+- **Your data stays on your machine.** The bridge reads local session files and rate-limit
+  headers; nothing is sent to any third party. The only exceptions are features you opt into:
+  [session summaries](#session-summaries-optional) (prompt text → OpenRouter) and
+  [phone push](#phone-push-notifications-optional) / [HA webhook](#home-assistant)
+  (project names → your chosen endpoint).
+- **No secrets in the repo.** `config.toml` (token, API keys) is gitignored; only
+  `config.example.toml` with placeholders is committed. The Claude OAuth token is read from
+  your local `~/.claude/.credentials.json` at runtime and never stored or transmitted.
+- **No real session data in the repo.** The dashboard screenshots in `docs/media/` are
+  rendered from mock fixture data (the same fixtures as `firmware/mock_hub/`), and device
+  photos are redacted and metadata-stripped.
+
+## Data contract
 
 ### `GET /state`
 
