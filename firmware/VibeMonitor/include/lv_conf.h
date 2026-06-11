@@ -9,7 +9,7 @@
 /* TFT_eSPI pushColors(..., true) does the byte swap, so keep LVGL swap off. */
 #define LV_COLOR_16_SWAP      0
 
-#define LV_MEM_SIZE           (40U * 1024U)
+#define LV_MEM_SIZE           (56U * 1024U)
 #define LV_DISP_DEF_REFR_PERIOD 30
 #define LV_TICK_CUSTOM        0          /* we call lv_tick_inc() in loop() */
 

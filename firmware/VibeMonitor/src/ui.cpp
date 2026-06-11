@@ -29,6 +29,10 @@ static lv_obj_t* codex_bar;
 static lv_obj_t* codex_ico;
 static lv_obj_t* codex_proj;      // projection line under Codex row
 static lv_obj_t* week_lbl;        // weekly reset countdown
+static lv_obj_t* claude_week_bar;
+static lv_obj_t* claude_week_val;
+static lv_obj_t* codex_week_bar;
+static lv_obj_t* codex_week_val;
 static AckCb g_ack = NULL;
 
 // settings-tab widgets
@@ -89,6 +93,20 @@ static lv_color_t projection_text(const Usage& u, char* out, size_t n) {
     }
     strlcpy(out, "steady", n);
     return pc(P().dim);
+}
+
+static void update_week_bar(const Usage& u, lv_obj_t* bar, lv_obj_t* val) {
+    if (u.ok && u.weekPct >= 0.0f) {
+        int wp = (int)(u.weekPct * 100 + 0.5f);
+        if (wp < 0) wp = 0; else if (wp > 100) wp = 100;
+        lv_bar_set_value(bar, wp, LV_ANIM_OFF);
+        char b[10];
+        snprintf(b, sizeof(b), "wk %d%%", wp);
+        lv_label_set_text(val, b);
+    } else {
+        lv_bar_set_value(bar, 0, LV_ANIM_OFF);
+        lv_label_set_text(val, "");
+    }
 }
 
 struct Row {
@@ -290,6 +308,37 @@ void ui_init() {
     lv_obj_set_style_text_color(week_lbl, pc(P().dim), 0);
     lv_label_set_text(week_lbl, "");
 
+    // Weekly utilization bars — below the reset countdown; color identifies provider.
+    claude_week_bar = lv_bar_create(tab_u);
+    lv_obj_set_size(claude_week_bar, 190, 8);
+    lv_obj_align(claude_week_bar, LV_ALIGN_TOP_LEFT, 2, 152);
+    lv_bar_set_range(claude_week_bar, 0, 100);
+    lv_bar_set_value(claude_week_bar, 0, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(claude_week_bar, pc(P().panel), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(claude_week_bar, pc(P().claude), LV_PART_INDICATOR);
+    lv_obj_set_style_radius(claude_week_bar, 3, LV_PART_MAIN);
+    lv_obj_set_style_radius(claude_week_bar, 3, LV_PART_INDICATOR);
+    claude_week_val = lv_label_create(tab_u);
+    lv_obj_align(claude_week_val, LV_ALIGN_TOP_LEFT, 196, 150);
+    lv_obj_set_style_text_font(claude_week_val, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(claude_week_val, pc(P().claude), 0);
+    lv_label_set_text(claude_week_val, "");
+
+    codex_week_bar = lv_bar_create(tab_u);
+    lv_obj_set_size(codex_week_bar, 190, 8);
+    lv_obj_align(codex_week_bar, LV_ALIGN_TOP_LEFT, 2, 167);
+    lv_bar_set_range(codex_week_bar, 0, 100);
+    lv_bar_set_value(codex_week_bar, 0, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(codex_week_bar, pc(P().panel), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(codex_week_bar, pc(P().codex), LV_PART_INDICATOR);
+    lv_obj_set_style_radius(codex_week_bar, 3, LV_PART_MAIN);
+    lv_obj_set_style_radius(codex_week_bar, 3, LV_PART_INDICATOR);
+    codex_week_val = lv_label_create(tab_u);
+    lv_obj_align(codex_week_val, LV_ALIGN_TOP_LEFT, 196, 165);
+    lv_obj_set_style_text_font(codex_week_val, &lv_font_montserrat_12, 0);
+    lv_obj_set_style_text_color(codex_week_val, pc(P().codex), 0);
+    lv_label_set_text(codex_week_val, "");
+
     // ---- settings tab ----
     // Brightness
     set_bright_lbl = lv_label_create(tab_set);
@@ -397,9 +446,15 @@ void ui_apply_theme() {
     lv_obj_set_style_text_color(claude_lbl, pc(P().claude), 0);
     lv_obj_set_style_bg_color(claude_bar, pc(P().panel), LV_PART_MAIN);
     lv_obj_set_style_bg_color(claude_bar, pc(P().claude), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(claude_week_bar, pc(P().panel), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(claude_week_bar, pc(P().claude), LV_PART_INDICATOR);
+    lv_obj_set_style_text_color(claude_week_val, pc(P().claude), 0);
     lv_obj_set_style_text_color(codex_lbl, pc(P().codex), 0);
     lv_obj_set_style_bg_color(codex_bar, pc(P().panel), LV_PART_MAIN);
     lv_obj_set_style_bg_color(codex_bar, pc(P().codex), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_color(codex_week_bar, pc(P().panel), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(codex_week_bar, pc(P().codex), LV_PART_INDICATOR);
+    lv_obj_set_style_text_color(codex_week_val, pc(P().codex), 0);
     // projection lines are recolored on next poll; default to dim for the swap
     lv_obj_set_style_text_color(claude_proj, pc(P().dim), 0);
     lv_obj_set_style_text_color(codex_proj, pc(P().dim), 0);
@@ -527,6 +582,9 @@ void ui_update(const StateModel* m) {
         lv_label_set_text(codex_lbl, "Codex --");
         lv_label_set_text(codex_proj, "");
     }
+
+    update_week_bar(m->claude, claude_week_bar, claude_week_val);
+    update_week_bar(m->codex,  codex_week_bar,  codex_week_val);
 
     // Weekly reset — prefer whichever provider reports it (claude first).
     int wsec = (m->claude.ok && m->claude.weekResetSec >= 0) ? m->claude.weekResetSec

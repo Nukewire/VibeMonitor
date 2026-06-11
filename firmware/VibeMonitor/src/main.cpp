@@ -89,6 +89,8 @@ void setup() {
     ui_apply_theme();              // ensure widgets match the loaded theme
     ui_set_ack_cb(on_ack);
     last_tick = millis();
+    lv_obj_invalidate(lv_scr_act());
+    for (int i = 0; i < 5; i++) { lv_timer_handler(); delay(30); }
     last_activity = millis();
 }
 
