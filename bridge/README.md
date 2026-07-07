@@ -13,17 +13,21 @@ A single Python process that:
 
 ## Setup
 1. `python -m pip install -e ".[dev]"`
-2. `cp config.example.toml config.toml` and set a random `token` (the device sends it as
+2. `python -m vibemonitor.setup` — a guided web wizard that writes `config.toml` for you
+   (token, providers, and the optional summary/HA/push/pricing sections). Or hand-edit:
+   `cp config.example.toml config.toml` and set a random `token` (the device sends it as
    the `X-VibeMonitor-Token` header). The Claude OAuth token is auto-read from
    `~/.claude/.credentials.json`; set `[claude] oauth_token` only to override it.
 3. Run the hub: `python -m vibemonitor.main config.toml`
 4. Install Claude Code hooks (instant "waiting" alerts):
-   `python hooks/install_hooks.py --token <same-token> --url http://localhost:8787/hook`
+   `python hooks/install_hooks.py --token <same-token> --url http://localhost:5151/hook`
    This backs up and MERGES into `~/.claude/settings.json` (it will not clobber your
-   existing hooks). Restart Claude Code so it picks them up.
+   existing hooks). Restart Claude Code so it picks them up. (The wizard can do this step
+   for you.)
 
 ## Endpoints
-All require the `X-VibeMonitor-Token` header.
+All data endpoints require the `X-VibeMonitor-Token` header (the `GET /` dashboard shell is the
+one exception — it carries no data and its JS supplies the token when it fetches `/state`).
 - `GET /state` — `{ts, usage:{claude,codex}, sessions:[{id,tool,project,status,ageSec,waiting,count}], staleSec}`.
   Sessions are sorted waiting-first and deduped per (tool, project); GONE sessions are
   dropped from the response. `staleSec` is seconds since the last successful scan (`-1`
@@ -32,6 +36,14 @@ All require the `X-VibeMonitor-Token` header.
   the session belongs to (device tap-to-dismiss).
 - `POST /hook` — receives Claude Code hook events (used by `hooks/vibemonitor_hook.py`);
   the hub stamps the event time server-side.
+- `GET /analytics` — usage burn-rate projection, trend sparkline samples, and daily-peak
+  history (per provider). Backs the dashboard's Analytics view.
+- `GET /costs` — today's token usage per (tool, project) with each row's share of the day's
+  total, plus a USD estimate when a `[pricing]` table is configured.
+- `GET /ha` — flat, automation-friendly scalars (`claude_pct`, `waiting_count`, `any_waiting`,
+  `capacity_status`, `stale_sec`, …) plus a `waiting` list, for Home Assistant / other pollers.
+- `GET /` — the browser dashboard (unauthenticated shell; its JS supplies the token when it
+  fetches `/state`). All the data endpoints above require the token header.
 
 ## Status model
 - **working** — session log changed within `working_sec` (default 60s).
@@ -52,7 +64,7 @@ is thread-safe (RLock, copy-on-read). The collector→hub split is a module boun
 second machine's collector can POST to one hub later (multi-PC, designed but not shipped in v1).
 
 ## Test
-`python -m pytest -q`   (79 tests)
+`python -m pytest -q`   (191 tests)
 
 ## Notes
 - The Codex sessions dir is huge; the collector only scans today's + yesterday's date folders.

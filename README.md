@@ -12,7 +12,7 @@ A tiny desk display for your Claude Code and OpenAI Codex CLI sessions — live 
   &nbsp;
   <img src="docs/media/vibemonitor_usage.png" alt="VibeMonitor usage tab — Claude and Codex usage gauges" width="49%">
 </p>
-<p align="center"><sub><b>Sessions tab</b> — working / idle / waiting at a glance &nbsp;·&nbsp; <b>Usage tab</b> — Claude &amp; Codex usage % with reset countdowns</sub></p>
+<p align="center"><sub><b>Sessions tab</b> — working / idle / waiting at a glance &nbsp;·&nbsp; <b>Usage tab</b> — Claude &amp; Codex usage % with 5h + weekly bars and reset countdowns</sub></p>
 
 ## What it does
 
@@ -79,12 +79,25 @@ Requires Python 3.11+ (uses `tomllib`).
 ```bash
 cd bridge
 python -m pip install -e ".[dev]"          # installs flask, requests; pytest for tests
-
-cp config.example.toml config.toml          # then edit config.toml and set a random `token`
+python -m vibemonitor.setup                 # guided web wizard — writes config.toml for you
 python -m vibemonitor.main config.toml       # starts the hub (default http://0.0.0.0:5151)
 ```
 
-First-time setup: `python -m vibemonitor.setup` (a guided web wizard).
+Prefer to hand-edit? Skip the wizard and `cp config.example.toml config.toml`, then set a
+random `token` — that's the only required field.
+
+### Setup wizard
+
+`python -m vibemonitor.setup` opens a small local web wizard (at `http://127.0.0.1:5152/`) that
+writes `config.toml` for you — no hand-editing TOML. Only the first step (a shared token, which it
+generates, plus which tools to watch) is required; every later step — AI summaries, Home Assistant,
+phone push, per-project pricing — is optional and skippable. It can also test your OpenRouter key
+and ntfy topic, install the Claude Code hooks, and print ready-to-paste Home Assistant YAML on the
+final screen. Re-running it backs up any existing `config.toml` to `config.toml.bak` first.
+
+<p align="center">
+  <img src="docs/media/vibemonitor_setup.png" alt="VibeMonitor setup wizard — guided config.toml builder with skippable optional steps" width="70%">
+</p>
 
 The Claude OAuth token used for the usage gauge is auto-read from `~/.claude/.credentials.json` on **Windows and Linux**; you only set `[claude] oauth_token` in `config.toml` to override it. On **macOS** Claude Code keeps that token in the system Keychain rather than a file, so the bridge can't auto-read it — set `[claude] oauth_token` manually there (see [Platform support](#platform-support)).
 
@@ -381,9 +394,10 @@ Everything is local by design:
 - **No secrets in the repo.** `config.toml` (token, API keys) is gitignored; only
   `config.example.toml` with placeholders is committed. The Claude OAuth token is read from
   your local `~/.claude/.credentials.json` at runtime and never stored or transmitted.
-- **No real session data in the repo.** The dashboard screenshots in `docs/media/` are
-  rendered from mock fixture data (the same fixtures as `firmware/mock_hub/`), and device
-  photos are redacted and metadata-stripped.
+- **No real session data in the repo.** The dashboard/analytics screenshots in `docs/media/`
+  are rendered from mock fixture data (the same fixtures as `firmware/mock_hub/`); the setup-wizard
+  screenshot shows a placeholder token and default host/port; and device photos are redacted and
+  metadata-stripped.
 
 ## Data contract
 
